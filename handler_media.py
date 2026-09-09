@@ -22,6 +22,7 @@ import os
 import io
 import base64
 import json
+import tempfile
 from typing import List, Tuple
 
 from PIL import Image, ImageDraw
@@ -43,7 +44,26 @@ OCR_LANG = "chi_tra+eng"      # Tesseract 語言包，依需求調整，例如�
 MASK_COLOR = (0, 0, 0)        # 遮蔽色塊顏色
 MASK_PADDING = 2              # 遮蔽框比偵測到的文字框多留幾個 px，避免邊緣殘留
 DEFAULT_MAP_FILE = "media_deid_map.json"
+
+# 遮蔽/還原後的檔案要存在哪裡，改這個變數就好：
+#   None          -> 系統暫存資料夾 (預設；不會弄髒原始檔案所在的資料夾，反正結果都會放回剪貼簿)
+#   "SAME_FOLDER" -> 跟原始檔案同一個資料夾 (檔名加 _masked / _restored)
+#   其他字串       -> 自訂資料夾路徑，統一集中存放，不存在會自動建立
+MEDIA_OUTPUT_DIR = None
 # ===========================================================
+
+
+def _resolve_output_path(input_path: str, suffix: str) -> str:
+    ext = os.path.splitext(input_path)[1].lower()
+    name = os.path.splitext(os.path.basename(input_path))[0]
+    if MEDIA_OUTPUT_DIR is None:
+        folder = tempfile.gettempdir()
+    elif MEDIA_OUTPUT_DIR == "SAME_FOLDER":
+        folder = os.path.dirname(input_path)
+    else:
+        os.makedirs(MEDIA_OUTPUT_DIR, exist_ok=True)
+        folder = MEDIA_OUTPUT_DIR
+    return os.path.join(folder, f"{name}{suffix}{ext}")
 
 
 def get_reason(label: str) -> str:
@@ -273,13 +293,13 @@ def restore_pdf(masked_path: str, output_path: str, map_file: str = DEFAULT_MAP_
 # ========== main.py 呼叫的統一入口：依副檔名自動決定要走圖片還是 PDF 流程 ==========
 def mask_file(input_path: str, output_path: str = None, map_file: str = DEFAULT_MAP_FILE) -> str:
     ext = os.path.splitext(input_path)[1].lower()
-    output_path = output_path or f"{os.path.splitext(input_path)[0]}_masked{ext}"
+    output_path = output_path or _resolve_output_path(input_path, "_masked")
     (mask_pdf if ext == ".pdf" else mask_image)(input_path, output_path, map_file)
     return output_path
 
 
 def restore_file(masked_path: str, output_path: str = None, map_file: str = DEFAULT_MAP_FILE) -> str:
     ext = os.path.splitext(masked_path)[1].lower()
-    output_path = output_path or f"{os.path.splitext(masked_path)[0]}_restored{ext}"
+    output_path = output_path or _resolve_output_path(masked_path, "_restored")
     (restore_pdf if ext == ".pdf" else restore_image)(masked_path, output_path, map_file)
     return output_path

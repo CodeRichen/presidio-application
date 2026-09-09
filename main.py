@@ -279,14 +279,23 @@ def start_listener():
     print("【監聽啟動】")
     print(f"  - {HOTKEY_COPY} : 複製並自動去識別化")
     print(f"  - {HOTKEY_PASTE} : 貼上 (若剪貼簿是標籤，會還原成真實內容貼上，貼完再改回標籤)")
-    print("按 Ctrl+C (在命令提示字元視窗內) 可停止腳本\n")
+    print("按 Ctrl+C 可停止腳本\n")
 
     hotkeys = {
         HOTKEY_COPY: lambda: on_copy(mapping),
         HOTKEY_PASTE: lambda: on_paste(mapping),
     }
-    with keyboard.GlobalHotKeys(hotkeys) as h:
-        h.join()
+    listener = keyboard.GlobalHotKeys(hotkeys)
+    listener.start()
+    try:
+        # 用短暫輪詢取代 listener.join()：join() 會整個卡住主執行緒，
+        # 導致 Ctrl+C 的 KeyboardInterrupt 傳不進來、程式關不掉。
+        while listener.running:
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        print("\n[結束] 收到 Ctrl+C，正在關閉監聽...")
+    finally:
+        listener.stop()
 
 
 if __name__ == "__main__":
