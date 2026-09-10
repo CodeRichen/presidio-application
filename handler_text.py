@@ -2,22 +2,96 @@
 一般文字（非程式碼）敏感資訊偵測規則。
 只負責「偵測」，回傳 [(start, end, label), ...]；標籤替換/存檔統一交給 main.py 處理。
 想加規則：在 RULES 加一行 Rule(...) 即可，不用動 detect()。
+
+偵測分三層：
+    1) 正則規則 (RULES，不分語言都會跑)
+    2) 英文內容 -> Presidio 內建的英文模型 (en_core_web_sm)
+    3) 中文內容 -> Presidio 內建中文模型 (zh_core_web_sm) + 掛載的 Hugging Face
+       ckiplab/bert-base-chinese-ner，額外抓 PERSON / LOCATION / ORGANIZATION
+第 2、3 層是同一個 AnalyzerEngine，用哪個語言是依 contains_chinese() 判斷後在 NLP_MODELS
+這個註冊表裡選函式。想整個換掉中文那層（例如換別的中文 NER 模型、接雲端 API），
+寫一個 func(text) -> [(start,end,label), ...]，把 NLP_MODELS["zh"] 蓋掉即可，其他地方不用動。
 """
 import re
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Tuple
 
 try:
-    from presidio_analyzer import AnalyzerEngine
-    _analyzer = AnalyzerEngine()
+    from presidio_analyzer import AnalyzerEngine, EntityRecognizer, RecognizerResult
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
+    from transformers import pipeline
+
+    # ---- 1. 中/英文的基礎 NLP 引擎 (spaCy)：解決單語系 Presidio 遇到 language="zh" 會 KeyError 的問題 ----
+    nlp_configuration = {
+        "nlp_engine_name": "spacy",
+        "models": [
+            {"lang_code": "zh", "model_name": "zh_core_web_sm"},  # python -m spacy download zh_core_web_sm
+            {"lang_code": "en", "model_name": "en_core_web_sm"},
+        ],
+    }
+    _nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
+    _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["zh", "en"])
+
+    # ---- 2. 自訂中文 NER 辨識器：用 Hugging Face 的 ckiplab/bert-base-chinese-ner 補強人名/地名/機構名 ----
+    class CustomHfChineseRecognizer(EntityRecognizer):
+        def __init__(self):
+            super().__init__(supported_entities=["PERSON", "LOCATION", "ORGANIZATION"],
+                              supported_language="zh")
+            print("正在載入 Hugging Face 中文 NER 模型 (ckiplab/bert-base-chinese-ner)...")
+            self.ner_pipeline = pipeline("ner", model="ckiplab/bert-base-chinese-ner",
+                                          aggregation_strategy="simple")
+
+        def load(self):
+            pass
+
+        def analyze(self, text, entities, nlp_artifacts=None):
+            label_map = {"PER": "PERSON", "LOC": "LOCATION", "ORG": "ORGANIZATION"}
+            results = []
+            for item in self.ner_pipeline(text):
+                entity_type = label_map.get(item["entity_group"])
+                if entity_type and (not entities or entity_type in entities):
+                    results.append(RecognizerResult(entity_type=entity_type, start=item["start"],
+                                                      end=item["end"], score=float(item["score"])))
+            return results
+
+    # ---- 3. 掛載自訂中文模型；掛載失敗(沒裝 transformers/下載模型失敗)不影響英文與正則規則 ----
+    try:
+        _analyzer.registry.add_recognizer(CustomHfChineseRecognizer())
+    except Exception as e:
+        print(f"[警告] 中文 NER 模型載入失敗，中文將只用 spaCy 內建結果：{e}")
 except Exception:
-    _analyzer = None  # 沒裝 presidio / 模型時，自動退化成只用下面的正則規則
+    _analyzer = None  # 完全沒裝 presidio/transformers 時，自動退化成只用下面的正則規則
 
 EXCLUDED_PRESIDIO_LABELS = {"US_DRIVER_LICENSE"}  # 不想遮蔽的 Presidio 類型，往這個 set 加
 
 
 def contains_chinese(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
+
+
+def _presidio_call(text: str, lang: str) -> List[Tuple[int, int, str]]:
+    if _analyzer is None:
+        return []
+    try:
+        return [(r.start, r.end, r.entity_type) for r in _analyzer.analyze(text=text, language=lang)
+                if r.entity_type not in EXCLUDED_PRESIDIO_LABELS]
+    except Exception:
+        return []  # 該語言模型沒裝/分析失敗都不影響正則規則的結果
+
+
+def presidio_en(text: str) -> List[Tuple[int, int, str]]:
+    return _presidio_call(text, "en")
+
+
+def presidio_zh(text: str) -> List[Tuple[int, int, str]]:
+    return _presidio_call(text, "zh")
+
+
+# 語言 -> NLP 模型函式 的註冊表：想加/換某個語言用的模型，往這裡改一行就好
+NLP_MODELS = {
+    "en": presidio_en,
+    "zh": presidio_zh,
+}
 
 
 def luhn_valid(value: str) -> bool:
@@ -93,14 +167,11 @@ def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str]]:
 
 
 def presidio_matches(text: str) -> List[Tuple[int, int, str]]:
-    """單獨跑 Presidio 模型判斷，供 handler_media 這種「已經跑過其他規則」的情境複用"""
-    if _analyzer is None or contains_chinese(text):
-        return []
-    try:
-        return [(r.start, r.end, r.entity_type) for r in _analyzer.analyze(text=text, language="en")
-                if r.entity_type not in EXCLUDED_PRESIDIO_LABELS]
-    except Exception:
-        return []  # Presidio 失敗不影響正則規則的結果
+    """依語言挑對應的 NLP 模型跑（英文/中文各自的 Presidio 模型），供 handler_media 這種
+    「已經跑過其他規則」的情境複用"""
+    lang = "zh" if contains_chinese(text) else "en"
+    model_func = NLP_MODELS.get(lang)
+    return model_func(text) if model_func else []
 
 
 def detect(text: str) -> List[Tuple[int, int, str]]:
