@@ -32,8 +32,8 @@ import handler_code
 import handler_media
 
 # ========================= 設定區：想改快速鍵/副檔名/分類方式都在這裡改 =========================
-HOTKEY_COPY = '<ctrl>+<alt>+c'
-HOTKEY_PASTE = '<ctrl>+<alt>+v'
+HOTKEY_COPY = '<ctrl>+<alt>+c'    # 有標籤就還原、沒標籤就遮蔽 (跟系統原生 Ctrl+C 分開，不互相干擾)
+HOTKEY_PASTE = '<ctrl>+<alt>+v'   # 單純貼上剪貼簿目前的內容，不做任何還原/改回標籤的動作
 
 CODE_EXTENSIONS = {".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".rs",
                     ".php", ".rb", ".sh", ".sql", ".json", ".yml", ".yaml"}
@@ -272,22 +272,9 @@ def on_copy(mapping):
 
 def on_paste(mapping):
     print("\n" + "=" * 50)
-    print("【偵測到貼上快速鍵】")
+    print("【偵測到貼上快速鍵】直接貼上剪貼簿目前的內容")
     title, proc = get_active_window_info()
-    content_type, content = get_clipboard_content()
-
-    is_tagged = content_type == "TEXT" and bool(TAG_RE.search(content))
-    if is_tagged:
-        pyperclip.copy(deanonymize_text(content, mapping))
-        print("[還原] 已暫時把真實內容放回剪貼簿供這次貼上使用")
-
     send_key_combination(ord('V'))
-
-    if is_tagged:
-        time.sleep(0.1)
-        pyperclip.copy(content)  # 貼上後改回遮蔽版，避免真實內容留在剪貼簿裡
-        print("[還原完畢] 剪貼簿已改回遮蔽版本")
-
     print(f"目標程式: {proc} | 視窗標題: {title}")
     print("=" * 50)
 
@@ -311,9 +298,10 @@ def _guarded(func):
 def start_listener():
     mapping = load_map()
     print("【監聽啟動】")
-    print(f"  - {HOTKEY_COPY} : 複製並自動去識別化")
-    print(f"  - {HOTKEY_PASTE} : 貼上 (若剪貼簿是標籤，會還原成真實內容貼上，貼完再改回標籤)")
-    print("關閉這個終端機視窗即可結束程式（見下方「已知限制」關於 Ctrl+C 的說明）\n")
+    print(f"  - {HOTKEY_COPY} : 有標籤就還原、沒標籤就自動遮蔽")
+    print(f"  - {HOTKEY_PASTE} : 單純貼上剪貼簿目前的內容")
+    print("  - Ctrl+V : 系統原生貼上，完全不受這支程式影響")
+    print("在終端機視窗按 Ctrl+C 可停止腳本\n")
 
     hotkeys = {
         HOTKEY_COPY: _guarded(lambda: on_copy(mapping)),

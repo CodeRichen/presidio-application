@@ -5,9 +5,10 @@
 
 偵測分三層：
     1) 正則規則 (RULES，不分語言都會跑)
-    2) 英文內容 -> Presidio 內建的英文模型 (en_core_web_sm)
-    3) 中文內容 -> Presidio 內建中文模型 (zh_core_web_sm) + 掛載的 Hugging Face
-       ckiplab/bert-base-chinese-ner，額外抓 PERSON / LOCATION / ORGANIZATION
+    2) 英文內容 -> Presidio 內建的英文模型 (en_core_web_sm) + Presidio 內建規則式辨識器
+    3) 中文內容 -> 只用掛載的 Hugging Face ckiplab/bert-base-chinese-ner 判斷 PERSON/LOCATION/ORGANIZATION
+       (zh_core_web_sm 只拿來給 Presidio 做斷詞，NER 結果刻意不採用，避免跟 CKIP 重複判斷、互相打架；
+        zh_core_web_sm 本身中文 NER 品質也比 CKIP 弱，兩個一起跑只會增加雜訊)
 第 2、3 層是同一個 AnalyzerEngine，用哪個語言是依 contains_chinese() 判斷後在 NLP_MODELS
 這個註冊表裡選函式。想整個換掉中文那層（例如換別的中文 NER 模型、接雲端 API），
 寫一個 func(text) -> [(start,end,label), ...]，把 NLP_MODELS["zh"] 蓋掉即可，其他地方不用動。
@@ -16,23 +17,24 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Tuple
 
+MIN_ZH_NER_SCORE = 0.7  # CKIP 判斷的信心分數門檻，低於這個值直接丟掉不採用；想放寬/收緊調這個數字即可
+
 try:
-    from presidio_analyzer import AnalyzerEngine, EntityRecognizer, RecognizerResult
+    from presidio_analyzer import AnalyzerEngine, EntityRecognizer, RecognizerResult, RecognizerRegistry
     from presidio_analyzer.nlp_engine import NlpEngineProvider
     from transformers import pipeline
 
-    # ---- 1. 中/英文的基礎 NLP 引擎 (spaCy)：解決單語系 Presidio 遇到 language="zh" 會 KeyError 的問題 ----
+    # ---- 1. 中/英文的基礎 NLP 引擎 (spaCy)：中文模型只拿來斷詞，NER 判斷交給下面的 CKIP 模型 ----
     nlp_configuration = {
         "nlp_engine_name": "spacy",
         "models": [
-            {"lang_code": "zh", "model_name": "zh_core_web_trf"},  # python -m spacy download zh_core_web_sm
-            {"lang_code": "en", "model_name": "en_core_web_trf"},
+            {"lang_code": "zh", "model_name": "zh_core_web_sm"},  # python -m spacy download zh_core_web_sm
+            {"lang_code": "en", "model_name": "en_core_web_sm"},
         ],
     }
     _nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
-    _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["zh", "en"])
 
-    # ---- 2. 自訂中文 NER 辨識器：用 Hugging Face 的 ckiplab/bert-base-chinese-ner 補強人名/地名/機構名 ----
+    # ---- 2. 自訂中文 NER 辨識器：只用 Hugging Face 的 ckiplab/bert-base-chinese-ner 判斷人名/地名/機構名 ----
     class CustomHfChineseRecognizer(EntityRecognizer):
         def __init__(self):
             super().__init__(supported_entities=["PERSON", "LOCATION", "ORGANIZATION"],
@@ -49,16 +51,27 @@ try:
             results = []
             for item in self.ner_pipeline(text):
                 entity_type = label_map.get(item["entity_group"])
-                if entity_type and (not entities or entity_type in entities):
+                score = float(item["score"])
+                if entity_type and score >= MIN_ZH_NER_SCORE and (not entities or entity_type in entities):
                     results.append(RecognizerResult(entity_type=entity_type, start=item["start"],
-                                                      end=item["end"], score=float(item["score"])))
+                                                      end=item["end"], score=score))
             return results
 
-    # ---- 3. 掛載自訂中文模型；掛載失敗(沒裝 transformers/下載模型失敗)不影響英文與正則規則 ----
+    # ---- 3. 手動組 registry：英文照 Presidio 內建規則正常載入；中文只掛 CKIP 這一個辨識器，
+    #          不讓 Presidio 自動載入 zh_core_web_sm 內建的 NER 辨識器，避免跟 CKIP 重複判斷 ----
     try:
-        _analyzer.registry.add_recognizer(CustomHfChineseRecognizer())
+        _registry = RecognizerRegistry()
+        _registry.load_predefined_recognizers(languages=["en"])
+        _registry.add_recognizer(CustomHfChineseRecognizer())
+        _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, registry=_registry, supported_languages=["zh", "en"])
     except Exception as e:
-        print(f"[警告] 中文 NER 模型載入失敗，中文將只用 spaCy 內建結果：{e}")
+        # 萬一 Presidio 版本的 registry API 不一樣，退回舊做法(中文會跟 spaCy 內建 NER 重複判斷，但至少能跑)
+        print(f"[警告] 自訂 registry 建立失敗，改用預設設定：{e}")
+        _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["zh", "en"])
+        try:
+            _analyzer.registry.add_recognizer(CustomHfChineseRecognizer())
+        except Exception:
+            pass
 except Exception:
     _analyzer = None  # 完全沒裝 presidio/transformers 時，自動退化成只用下面的正則規則
 
