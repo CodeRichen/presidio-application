@@ -25,8 +25,8 @@ try:
     nlp_configuration = {
         "nlp_engine_name": "spacy",
         "models": [
-            {"lang_code": "zh", "model_name": "zh_core_web_sm"},  # python -m spacy download zh_core_web_sm
-            {"lang_code": "en", "model_name": "en_core_web_sm"},
+            {"lang_code": "zh", "model_name": "zh_core_web_trf"},  # python -m spacy download zh_core_web_sm
+            {"lang_code": "en", "model_name": "en_core_web_trf"},
         ],
     }
     _nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
@@ -69,21 +69,22 @@ def contains_chinese(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
 
 
-def _presidio_call(text: str, lang: str) -> List[Tuple[int, int, str]]:
+def _presidio_call(text: str, lang: str) -> List[Tuple[int, int, str, float]]:
     if _analyzer is None:
         return []
     try:
-        return [(r.start, r.end, r.entity_type) for r in _analyzer.analyze(text=text, language=lang)
+        return [(r.start, r.end, r.entity_type, round(float(r.score), 2))
+                for r in _analyzer.analyze(text=text, language=lang)
                 if r.entity_type not in EXCLUDED_PRESIDIO_LABELS]
     except Exception:
         return []  # 該語言模型沒裝/分析失敗都不影響正則規則的結果
 
 
-def presidio_en(text: str) -> List[Tuple[int, int, str]]:
+def presidio_en(text: str) -> List[Tuple[int, int, str, float]]:
     return _presidio_call(text, "en")
 
 
-def presidio_zh(text: str) -> List[Tuple[int, int, str]]:
+def presidio_zh(text: str) -> List[Tuple[int, int, str, float]]:
     return _presidio_call(text, "zh")
 
 
@@ -151,8 +152,9 @@ RULES = [
 _COMPILED = [(r.name, re.compile(r.pattern, r.flags), r.validator) for r in RULES]
 
 
-def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str]]:
-    """compiled 不給就用本檔的 RULES；handler_code.py 會傳自己的規則進來複用這個函式"""
+def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str, float]]:
+    """compiled 不給就用本檔的 RULES；handler_code.py 會傳自己的規則進來複用這個函式
+    正則規則沒有「信心分數」的概念，統一補 None，跟 Presidio 的結果格式對齊方便後面合併"""
     compiled = compiled if compiled is not None else _COMPILED
     matches = []
     for name, pattern, validator in compiled:
@@ -162,11 +164,11 @@ def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str]]:
             else:
                 value, start, end = m.group(0), m.start(), m.end()
             if validator is None or validator(value):
-                matches.append((start, end, name))
+                matches.append((start, end, name, None))
     return matches
 
 
-def presidio_matches(text: str) -> List[Tuple[int, int, str]]:
+def presidio_matches(text: str) -> List[Tuple[int, int, str, float]]:
     """依語言挑對應的 NLP 模型跑（英文/中文各自的 Presidio 模型），供 handler_media 這種
     「已經跑過其他規則」的情境複用"""
     lang = "zh" if contains_chinese(text) else "en"
@@ -174,6 +176,7 @@ def presidio_matches(text: str) -> List[Tuple[int, int, str]]:
     return model_func(text) if model_func else []
 
 
-def detect(text: str) -> List[Tuple[int, int, str]]:
-    """main.py 呼叫的入口：回傳這段文字裡所有敏感資訊的 (start, end, label)"""
+def detect(text: str) -> List[Tuple[int, int, str, float]]:
+    """main.py 呼叫的入口：回傳這段文字裡所有敏感資訊的 (start, end, label, score)，
+    score 是 Presidio 判定的信心分數 (0~1)，正則規則比對到的固定是 None"""
     return _run_rules(text) + presidio_matches(text)

@@ -32,8 +32,8 @@ import handler_code
 import handler_media
 
 # ========================= 設定區：想改快速鍵/副檔名/分類方式都在這裡改 =========================
-HOTKEY_COPY = '<ctrl>+c'
-HOTKEY_PASTE = '<ctrl>+v'
+HOTKEY_COPY = '<ctrl>+<alt>+c'
+HOTKEY_PASTE = '<ctrl>+<alt>+v'
 
 CODE_EXTENSIONS = {".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".rs",
                     ".php", ".rb", ".sh", ".sql", ".json", ".yml", ".yaml"}
@@ -83,17 +83,34 @@ def load_map():
 
 
 def save_map(mapping):
+    folder = os.path.dirname(MAP_FILE)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
     with open(MAP_FILE, "w", encoding="utf-8") as f:
         for tag, val in mapping.items():
             f.write(f"{tag}\t{val}\n")
 
 
+def cleanup_map_files():
+    """程式結束時把對照表刪掉，不留明碼敏感資訊在硬碟上"""
+    for f in (MAP_FILE, handler_media.DEFAULT_MAP_FILE):
+        try:
+            os.remove(f)
+            print(f"[清理] 已刪除 {f}")
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"[警告] 刪除 {f} 失敗：{e}")
+
+
 def merge_overlaps(matches):
+    """matches 是 (start, end, label, score) 的 4 元素 tuple，重疊時只留較長的那個"""
     matches = sorted(matches, key=lambda m: (m[0], -(m[1] - m[0])))
     merged, last_end = [], -1
-    for start, end, label in matches:
+    for m in matches:
+        start, end = m[0], m[1]
         if start >= last_end:
-            merged.append((start, end, label))
+            merged.append(m)
             last_end = end
     return merged
 
@@ -114,7 +131,7 @@ def anonymize_text(text, mapping):
             counters[t] = max(counters.get(t, 0), int(i))
 
     out = text
-    for start, end, etype in sorted(matches, key=lambda m: m[0], reverse=True):
+    for start, end, etype, score in sorted(matches, key=lambda m: m[0], reverse=True):
         val = text[start:end]
         tag = reverse.get(val)
         if not tag:
@@ -123,7 +140,8 @@ def anonymize_text(text, mapping):
             mapping[tag] = val
             reverse[val] = tag
         kind = "程式碼" if is_code else "一般文字"
-        print(f"[遮蔽] {val!r} -> {tag}  (理由: {etype}, 判斷為{kind})")
+        score_info = f", 信心分數 {score}" if score is not None else ""
+        print(f"[遮蔽] {val!r} -> {tag}  (理由: {etype}, 判斷為{kind}{score_info})")
         out = out[:start] + tag + out[end:]
 
     save_map(mapping)
@@ -274,16 +292,32 @@ def on_paste(mapping):
     print("=" * 50)
 
 
+_busy = False  # 防止「模擬按鍵」又觸發同一組快速鍵造成無限遞迴 (快速鍵跟系統原生複製/貼上鍵相同時必須有這層防護)
+
+
+def _guarded(func):
+    def wrapper():
+        global _busy
+        if _busy:
+            return  # 正在處理上一次觸發，忽略這次(通常就是我們自己模擬按鍵造成的重複觸發)
+        _busy = True
+        try:
+            func()
+        finally:
+            _busy = False
+    return wrapper
+
+
 def start_listener():
     mapping = load_map()
     print("【監聽啟動】")
     print(f"  - {HOTKEY_COPY} : 複製並自動去識別化")
     print(f"  - {HOTKEY_PASTE} : 貼上 (若剪貼簿是標籤，會還原成真實內容貼上，貼完再改回標籤)")
-    print("按 Ctrl+C 可停止腳本\n")
+    print("關閉這個終端機視窗即可結束程式（見下方「已知限制」關於 Ctrl+C 的說明）\n")
 
     hotkeys = {
-        HOTKEY_COPY: lambda: on_copy(mapping),
-        HOTKEY_PASTE: lambda: on_paste(mapping),
+        HOTKEY_COPY: _guarded(lambda: on_copy(mapping)),
+        HOTKEY_PASTE: _guarded(lambda: on_paste(mapping)),
     }
     listener = keyboard.GlobalHotKeys(hotkeys)
     listener.start()
@@ -293,9 +327,10 @@ def start_listener():
         while listener.running:
             time.sleep(0.2)
     except KeyboardInterrupt:
-        print("\n[結束] 收到 Ctrl+C，正在關閉監聽...")
+        print("\n[結束] 收到中斷信號，正在關閉監聽...")
     finally:
         listener.stop()
+        cleanup_map_files()
 
 
 if __name__ == "__main__":

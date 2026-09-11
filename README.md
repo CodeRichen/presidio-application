@@ -57,7 +57,7 @@ python -m spacy download zh_core_web_sm
 
 Windows 上如果 `tesseract.exe` 沒加進 PATH，改 `handler_media.py` 裡的 `TESSERACT_CMD`。
 
-第一次執行時，`ckiplab/bert-base-chinese-ner` 會自動從 Hugging Face 下載（幾百 MB），需要網路；之後會用本地快取。沒裝 `transformers`、沒網路下載模型、或完全沒裝 Presidio，程式都會自動偵測失敗並退化（分別是：中文只剩 spaCy 內建結果 / 中英文都只剩 spaCy 內建結果 / 全部只剩正則規則），不會讓整支程式掛掉。
+第一次執行時，`ckiplab/bert-base-chinese-ner` 會自動從 Hugging Face 下載（幾百 MB），需要網路；之後會用本地快取。沒裝 `transformers`、沒網路下載模型、或完全沒裝 Presidio，程式都會自動偵測失敗並退化
 
 ---
 
@@ -205,38 +205,7 @@ NLP_MODELS["zh"] = my_chinese_model
 
 改完這一行，`detect()`、`handler_code.py`、`handler_media.py` 完全不用動，因為它們都是呼叫 `presidio_matches()` / `detect()` 這個統一入口。
 
-### 4. 換掉「判斷文字是不是程式碼」的方式
-
-`main.py` 裡的 `CLASSIFY_MODELS`：
-
-```python
-CLASSIFY_MODELS = {
-    "heuristic": heuristic_is_code,
-}
-TEXT_CLASSIFY_MODE = "heuristic"
-```
-
-要加一個新的判斷方式，一樣是「寫函式 → 註冊進字典 → 切換 key」三步：
-
-```python
-def qwen_is_code(text: str) -> bool:
-    return my_qwen_model.classify(text) == "code"
-
-CLASSIFY_MODELS["qwen"] = qwen_is_code
-TEXT_CLASSIFY_MODE = "qwen"
-```
-
-### 5. 新增/排除 Presidio 判斷的實體類型
-
-`handler_text.py`：
-
-```python
-EXCLUDED_PRESIDIO_LABELS = {"US_DRIVER_LICENSE"}
-```
-
-不想遮蔽某個 Presidio 判斷出來的類型，就把它的名稱加進這個 `set`。
-
-### 6. 調整「複製檔案」時的分類規則
+### 4. 調整「複製檔案」時的分類規則
 
 `main.py` 設定區：
 
@@ -248,19 +217,7 @@ TEXT_FILE_EXTENSIONS = {".txt", ".md", ".csv", ".log"}
 
 複製到的檔案副檔名如果不在這三個集合裡，會直接跳過不處理。想支援更多類型，把副檔名加進對應集合即可。
 
-### 7. 調整圖片/PDF 遮蔽後的檔案要存哪裡
-
-`handler_media.py`：
-
-```python
-MEDIA_OUTPUT_DIR = None
-```
-
-- `None`（預設）：存到系統暫存資料夾，不會弄髒原始檔案所在的位置。
-- `"SAME_FOLDER"`：跟原始檔案同一個資料夾，檔名加 `_masked`/`_restored`。
-- 自訂字串，例如 `r"C:\DeidOutput"`：統一集中存到你指定的資料夾。
-
-### 8. 其他常用小設定
+### 5. 其他常用小設定
 
 | 想改什麼                              | 在哪個檔案                         | 變數                                                                     |
 | ------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------ |
@@ -270,13 +227,3 @@ MEDIA_OUTPUT_DIR = None
 | 對照表檔名                            | `main.py` / `handler_media.py` | `MAP_FILE` / `DEFAULT_MAP_FILE`                                      |
 | 程式碼判斷門檻                        | `main.py`                        | `heuristic_is_code()` 裡的 `>= 3`                                    |
 | 中文 NER 模型換其他 Hugging Face 模型 | `handler_text.py`                | `CustomHfChineseRecognizer.__init__` 裡 `pipeline(..., model="...")` |
-
----
-
-## 已知限制
-
-- `Ctrl+Alt+C`/`V` 是**模擬**按鍵：實際上是先幫你按一次真正的 Ctrl+C/V，再做後續處理，所以來源程式看到的仍是正常的複製/貼上操作。
-- 這是全域鍵盤監聽 + 讀寫剪貼簿的工具，設計給個人本機使用；不建議打包成公開發佈的產品直接讓不熟悉的使用者安裝執行。
-- 圖片/PDF 的偵測精準度取決於 OCR 辨識品質，掃描歪斜、字太小、手寫字都可能漏偵測，不是百分之百保證。
-- CKIP 中文 NER 第一次執行需要網路下載模型；離線環境會自動退化成只用 spaCy 內建結果。
-- 終端機按 `Ctrl+C` 才能正常結束程式；直接關掉終端機視窗也可以，但不會有「正在關閉監聽...」的訊息。

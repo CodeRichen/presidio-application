@@ -1,0 +1,8 @@
+zh_core_web_sm 75.1M
+zh_core_web_md 113.1M
+zh_core_web_trf 415.1M
+en_core_web_sm 14.5M
+en_core_web_lg 424.5M
+en_core_web_trf 477.5M
+models--ckiplab--bert-base-chinese-ner 776M
+Tesseract OCR 238M

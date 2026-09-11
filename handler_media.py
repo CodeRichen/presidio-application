@@ -43,7 +43,7 @@ if os.path.exists(TESSERACT_CMD):
 OCR_LANG = "chi_tra+eng"      # Tesseract 語言包，依需求調整，例如只用 "eng"
 MASK_COLOR = (0, 0, 0)        # 遮蔽色塊顏色
 MASK_PADDING = 2              # 遮蔽框比偵測到的文字框多留幾個 px，避免邊緣殘留
-DEFAULT_MAP_FILE = "media_deid_map.json"
+DEFAULT_MAP_FILE = "./presidio/media_deid_map.json"
 
 # 遮蔽/還原後的檔案要存在哪裡，改這個變數就好：
 #   None          -> 系統暫存資料夾 (預設；不會弄髒原始檔案所在的資料夾，反正結果都會放回剪貼簿)
@@ -79,20 +79,24 @@ def print_masked_entries(entries: list, source_label: str):
     for e in entries:
         page_info = f"第 {e['page'] + 1} 頁 " if "page" in e else ""
         value = e.get("value", "(無法取得文字內容，僅有畫面截圖)")
-        print(f"  - {page_info}[{e['tag']}] 內容：「{value}」｜理由：{get_reason(e['label'])}")
+        score = e.get("score")
+        score_info = f"，信心分數 {score}" if score is not None else ""
+        print(f"  - {page_info}[{e['tag']}] 內容：「{value}」｜理由：{get_reason(e['label'])}{score_info}")
 
 
 def _merge_overlaps(matches):
+    """matches 是 (start, end, label, score) 的 4 元素 tuple，重疊時只留較長的那個"""
     matches = sorted(matches, key=lambda m: (m[0], -(m[1] - m[0])))
     merged, last_end = [], -1
-    for start, end, label in matches:
+    for m in matches:
+        start, end = m[0], m[1]
         if start >= last_end:
-            merged.append((start, end, label))
+            merged.append(m)
             last_end = end
     return merged
 
 
-def detect_matches(text: str) -> List[Tuple[int, int, str]]:
+def detect_matches(text: str) -> List[Tuple[int, int, str, float]]:
     """借用 handler_code 的正則規則，再加上 handler_text 的 Presidio 模型一起判斷，重疊的結果合併"""
     matches = handler_code.detect(text) + handler_code.handler_text.presidio_matches(text)
     return _merge_overlaps(matches)
@@ -127,7 +131,7 @@ def _group_lines(words: List[dict]) -> List[List[dict]]:
 
 
 def find_sensitive_boxes_in_words(words: List[dict]):
-    """回傳 [(x0, y0, x1, y1, label, matched_text), ...]（像素座標）"""
+    """回傳 [(x0, y0, x1, y1, label, matched_text, score), ...]（像素座標）"""
     boxes = []
     for line_words in _group_lines(words):
         line_text, offsets = "", []
@@ -136,13 +140,13 @@ def find_sensitive_boxes_in_words(words: List[dict]):
             line_text += w["text"]
             offsets.append((start, len(line_text), w))
             line_text += " "
-        for start, end, label in detect_matches(line_text):
+        for start, end, label, score in detect_matches(line_text):
             hit_words = [w for s, e, w in offsets if s < end and e > start]
             if not hit_words:
                 continue
             x0 = min(w["left"] for w in hit_words); y0 = min(w["top"] for w in hit_words)
             x1 = max(w["left"] + w["width"] for w in hit_words); y1 = max(w["top"] + w["height"] for w in hit_words)
-            boxes.append((x0, y0, x1, y1, label, line_text[start:end]))
+            boxes.append((x0, y0, x1, y1, label, line_text[start:end], score))
     return boxes
 
 
@@ -154,7 +158,11 @@ def _load_all_map(map_file: str) -> dict:
         return json.load(f)
 
 
+
 def _save_map_entry(map_file: str, key: str, entries: list):
+    folder = os.path.dirname(map_file)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
     data = _load_all_map(map_file)
     data[key] = entries
     with open(map_file, "w", encoding="utf-8") as f:
@@ -178,10 +186,10 @@ def mask_image(input_path: str, output_path: str, map_file: str = DEFAULT_MAP_FI
 
     entries, counters = [], {}
     draw = ImageDraw.Draw(img)
-    for x0, y0, x1, y1, label, value in boxes:
+    for x0, y0, x1, y1, label, value, score in boxes:
         box = (x0 - MASK_PADDING, y0 - MASK_PADDING, x1 + MASK_PADDING, y1 + MASK_PADDING)
         counters[label] = counters.get(label, 0) + 1
-        entries.append({"tag": f"{label}_{counters[label]}", "label": label, "value": value,
+        entries.append({"tag": f"{label}_{counters[label]}", "label": label, "value": value, "score": score,
                          "bbox": list(box), "crop_b64": _crop_to_png_b64(img, box)})
         draw.rectangle(box, fill=MASK_COLOR)
 
@@ -226,7 +234,7 @@ def _mask_pdf_text_page(page, entries, counters):
             offsets.append((start, len(line_text), w))
             line_text += " "
 
-        for start, end, label in detect_matches(line_text):
+        for start, end, label, score in detect_matches(line_text):
             hit = [w for s, e, w in offsets if s < end and e > start]
             if not hit:
                 continue
@@ -237,7 +245,7 @@ def _mask_pdf_text_page(page, entries, counters):
             counters[label] = counters.get(label, 0) + 1
             crop_pix = page.get_pixmap(clip=rect, matrix=fitz.Matrix(2, 2), annots=False)
             entries.append({"tag": f"{label}_{counters[label]}", "label": label, "page": page.number,
-                             "bbox": [x0, y0, x1, y1], "value": " ".join(w[4] for w in hit),
+                             "bbox": [x0, y0, x1, y1], "value": " ".join(w[4] for w in hit), "score": score,
                              "crop_b64": base64.b64encode(crop_pix.tobytes("png")).decode("ascii")})
             page.add_redact_annot(rect, fill=MASK_COLOR)
     page.apply_redactions()
@@ -249,7 +257,7 @@ def _mask_pdf_scanned_page(page, entries, counters, zoom: float = 2.0):
     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
     boxes = find_sensitive_boxes_in_words(ocr_words(img))
 
-    for x0, y0, x1, y1, label, value in boxes:
+    for x0, y0, x1, y1, label, value, score in boxes:
         px0, py0, px1, py1 = x0 - MASK_PADDING, y0 - MASK_PADDING, x1 + MASK_PADDING, y1 + MASK_PADDING
         rect = fitz.Rect(px0 / zoom, py0 / zoom, px1 / zoom, py1 / zoom)
 
@@ -257,7 +265,7 @@ def _mask_pdf_scanned_page(page, entries, counters, zoom: float = 2.0):
         crop = img.crop((max(px0, 0), max(py0, 0), px1, py1))
         buf = io.BytesIO(); crop.save(buf, format="PNG")
         entries.append({"tag": f"{label}_{counters[label]}", "label": label, "value": value, "page": page.number,
-                         "bbox": [rect.x0, rect.y0, rect.x1, rect.y1],
+                         "bbox": [rect.x0, rect.y0, rect.x1, rect.y1], "score": score,
                          "crop_b64": base64.b64encode(buf.getvalue()).decode("ascii")})
         page.add_redact_annot(rect, fill=MASK_COLOR)
     page.apply_redactions()
