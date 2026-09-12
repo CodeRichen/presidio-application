@@ -24,8 +24,8 @@ import traceback
 import contextlib
 
 TARGET_DIR = os.path.dirname(os.path.abspath(__file__))
-ANSWER_FILE = os.path.join(TARGET_DIR, "presidio/t1.json")
-RESULT_FILE = os.path.join(TARGET_DIR, "presidio/測試結果_多版本.txt")
+ANSWER_FILE = os.path.join(TARGET_DIR, "presidio/t3.json")
+RESULT_FILE = os.path.join(TARGET_DIR, "presidio/t3mid.txt")
 
 
 @contextlib.contextmanager
