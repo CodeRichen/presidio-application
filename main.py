@@ -40,7 +40,7 @@ CODE_EXTENSIONS = {".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go
 MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp", ".pdf"}
 TEXT_FILE_EXTENSIONS = {".txt", ".md", ".csv", ".log"}   # 純文字檔：讀出內容、按一般文字規則遮蔽
 
-MAP_FILE = "./presidio/clipboard_map.txt"
+MAP_FILE = "./presidio/real/clipboard_map.txt"
 
 
 def heuristic_is_code(text: str) -> bool:

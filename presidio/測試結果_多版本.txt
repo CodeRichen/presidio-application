@@ -1,0 +1,46 @@
+==============================================================================
+剪貼簿敏感資訊防護 - 單篇文章 一次複製/貼上 測試報告（多版本評分）
+文章長度：1219 字元　答案筆數：30
+==============================================================================
+
+[複製] 整篇偵測+遮蔽耗時: 253.340 ms
+[貼上] 耗時: 100.718 ms | 剪貼簿內容維持不變(符合 on_paste 設計): OK
+[還原] 複製回來耗時: 251.238 ms | 完全還原成原始文章: OK
+[分類] 文章整體判斷: 一般文字
+
+解答共 30 筆: [['F123456789', 'TW_ID'], ['0955-123-456', 'TW_PHONE'], ['sinxian.chou.fake@example.com', 'EMAIL'], ['4916 1234 5678 9012', 'CREDIT_CARD'], ['812-2233-445566778', 'BANK_ACCOUNT'], ['1990年07月22日', 'DATE_OF_BIRTH'], ['台中市西屯區台灣大道三段99號12樓', 'ADDRESS'], ['407', 'ZIP_CODE'], ['MRN-2026-004471', 'MEDICAL_RECORD_NUMBER'], ['健保投保序號 H0293847561', 'INSURANCE_ID'], ['E223456781', 'TW_ID'], ['312445890', 'PASSPORT'], ['0966-234-567', 'TW_PHONE'], ['yating.hsu.fake@example.com', 'EMAIL'], ['5423 8899 0011 2233', 'CREDIT_CARD'], ['1988年11月05日', 'DATE_OF_BIRTH'], ['RFK-5566', 'LICENSE_PLATE'], ['203.0.113.87', 'IP_ADDRESS'], ['3C:5A:B4:9E:11:02', 'MAC_ADDRESS'], ['統一編號 28374651', 'TAX_ID'], ['https://portal.ankang-fake-health.com.tw/member/query?id=004471', 'URL'], ['24.1477° N, 120.6736° E', 'GPS_COORDINATES'], ['532-19-4487', 'US_SSN'], ['+1 (415) 555-0148', 'US_PHONE'], ['michael.turner.fake@example.com', 'EMAIL'], ['GB29 NWBK 6016 1331 9268 19', 'IBAN'], ['NWBKGB2LXXX', 'SWIFT_CODE'], ['1HGCM82633A004352', 'VEHICLE_VIN'], ['D1234567', 'DRIVER_LICENSE'], ['bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'CRYPTO_WALLET']]
+實際偵測到 25 筆: [('F123456789', 'TW_ID'), ('0955-123-456', 'TW_PHONE'), ('sinxian.chou.fake@example.com', 'EMAIL'), ('812-2233-445566778', 'BANK_ACCOUNT'), ('1990年07月22日', 'DATE_OF_BIRTH'), ('記為台中市西屯區台灣大道三段99號12樓', 'ADDRESS'), ('MRN-2026-004471', 'MEDICAL_RECORD_NUMBER'), ('健保投保序號 H0293847561', 'INSURANCE_ID'), ('E223456781', 'TW_ID'), ('0966-234-567', 'TW_PHONE'), ('yating.hsu.fake@example.com', 'EMAIL'), ('1988年11月05日', 'DATE_OF_BIRTH'), ('RFK-5566', 'LICENSE_PLATE'), ('203.0.113.87', 'IP_ADDRESS'), ('3C:5A:B4:9E:11:02', 'MAC_ADDRESS'), ('統一編號 28374651', 'TAX_ID'), ('https://portal.ankang-fake-health.com.tw/member/query?id=004471，伺服器機房座標登記為24.1477°', 'URL'), ('532-19-4487', 'US_SSN'), ('+1 (415) 555-0148', 'US_PHONE'), ('michael.turner.fake@example.com', 'EMAIL'), ('GB29 NWBK 6016 1331 9268 19', 'IBAN'), ('NWBKGB2LXXX', 'CREDENTIAL_LIKE'), ('1HGCM82633A004352', 'CREDENTIAL_LIKE'), ('D1234567', 'CREDENTIAL_LIKE'), ('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'GENERIC_SECRET')]
+
+------------------------------------------------------------------------------
+版本一：嚴格比對（起訖位置 + 類型完全一致）
+------------------------------------------------------------------------------
+命中(TP): 19  誤判(FP): 6  漏判(FN): 11
+誤判內容: [('記為台中市西屯區台灣大道三段99號12樓', 'ADDRESS'), ('https://portal.ankang-fake-health.com.tw/member/query?id=004471，伺服器機房座標登記為24.1477°', 'URL'), ('NWBKGB2LXXX', 'CREDENTIAL_LIKE'), ('1HGCM82633A004352', 'CREDENTIAL_LIKE'), ('D1234567', 'CREDENTIAL_LIKE'), ('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'GENERIC_SECRET')]
+漏判內容: [('4916 1234 5678 9012', 'CREDIT_CARD'), ('台中市西屯區台灣大道三段99號12樓', 'ADDRESS'), ('407', 'ZIP_CODE'), ('312445890', 'PASSPORT'), ('5423 8899 0011 2233', 'CREDIT_CARD'), ('https://portal.ankang-fake-health.com.tw/member/query?id=004471', 'URL'), ('24.1477° N, 120.6736° E', 'GPS_COORDINATES'), ('NWBKGB2LXXX', 'SWIFT_CODE'), ('1HGCM82633A004352', 'VEHICLE_VIN'), ('D1234567', 'DRIVER_LICENSE'), ('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'CRYPTO_WALLET')]
+Precision: 76.00%
+Recall   : 63.33%
+F1 Score : 69.09%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本二：寬鬆比對（範圍有重疊即可，但類型需正確）
+------------------------------------------------------------------------------
+命中(TP): 21  誤判(FP): 4  漏判(FN): 9
+誤判內容: [('NWBKGB2LXXX', 'CREDENTIAL_LIKE'), ('1HGCM82633A004352', 'CREDENTIAL_LIKE'), ('D1234567', 'CREDENTIAL_LIKE'), ('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'GENERIC_SECRET')]
+漏判內容: [('4916 1234 5678 9012', 'CREDIT_CARD'), ('407', 'ZIP_CODE'), ('312445890', 'PASSPORT'), ('5423 8899 0011 2233', 'CREDIT_CARD'), ('24.1477° N, 120.6736° E', 'GPS_COORDINATES'), ('NWBKGB2LXXX', 'SWIFT_CODE'), ('1HGCM82633A004352', 'VEHICLE_VIN'), ('D1234567', 'DRIVER_LICENSE'), ('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'CRYPTO_WALLET')]
+Precision: 84.00%
+Recall   : 70.00%
+F1 Score : 76.36%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本三：最寬鬆比對（範圍有重疊即算對，不論類型）
+------------------------------------------------------------------------------
+命中(TP): 25  誤判(FP): 0  漏判(FN): 5
+漏判內容: [('4916 1234 5678 9012', 'CREDIT_CARD'), ('407', 'ZIP_CODE'), ('312445890', 'PASSPORT'), ('5423 8899 0011 2233', 'CREDIT_CARD'), ('24.1477° N, 120.6736° E', 'GPS_COORDINATES')]
+Precision: 100.00%
+Recall   : 83.33%
+F1 Score : 90.91%
+結果: ✘ 有誤判或漏判
+
+==============================================================================

@@ -1,0 +1,6 @@
+<CREDENTIAL_LIKE_1>	1HGCM82633A004352
+<EMAIL_1>	.turner.fake@example.com
+<URL_1>	https://portal.ankang-fake-health.com.tw/member/query?id=004471，伺服器機房座標登記為24.1477°
+<EMAIL_2>	.hsu.fake@example.com
+<CREDENTIAL_LIKE_2>	H0293847561
+<EMAIL_3>	.chou.fake@example.com

@@ -1,0 +1,109 @@
+{
+  "article": "【企業人資與財務系統資料外洩調查報告（草稿）】（虛構情境，僅供偵測規則測試使用）\n\n本調查為集團資安小組針對人資與薪資系統疑似遭未授權存取事件所做的初步紀錄，涉及台灣、美國、日本三地員工資料，以下所有個資均為測試用虛構資料。\n\n一、台灣總部員工\n\n資深財務分析師黃俊傑，員工編號EMP-TW-008812，身分證字號A198765432，聯絡電話0912-777-888，信箱junjie.huang.fake@example.com。薪資轉帳帳戶為013-3344-556677889，出生日期1982年02月18日，戶籍地址高雄市苓雅區四維三路120號8樓。\n\n二、美國分公司員工\n\nSarah Bennett，員工編號EMP-US-441209，社會安全號碼441-27-8890，聯絡電話+1 (212) 555-0199，信箱sarah.bennett.fake@example.com，居住地址為 482 Lexington Ave, New York, NY 10017。公司配發之公務信用卡卡號為3714 496353 98431，駕照號碼NY-D9988771。\n\n三、日本分公司員工\n\n田中健太，マイナンバー（個人番號）1234 5678 9012，聯絡電話080-1234-5678，信箱kenta.tanaka.fake@example.jp，護照號碼TR3345678，薪資帳戶登記為みずほ銀行 新宿支店 普通 1234567。\n\n四、異常存取細節\n\n於2026年08月30日 23:47偵測到來源 IP 192.0.2.145（對應內部裝置 MAC 位址 AC:DE:48:00:11:22）登入內部 VPN 系統（https://vpn-internal-fake-corp.example.com/login），該時段地下二樓監視器編號 CAM-B2-014亦拍攝到一輛車牌為AAF-3210的車輛駛入地下停車場，目前尚無法確認兩者關聯性。\n\n五、境外資金流動測試資料\n\n調查同時比對集團德國子公司之測試帳戶，IBAN 為DE89 3704 0044 0532 0130 00，對應 SWIFT 代碼COBADEFFXXX；另有一組測試用加密貨幣錢包位址0x8f3CBe8B1a1A6e6E7c1e9E6D2f1B4a3C5d6E7F80被列入觀察名單，暫無實際資金異動紀錄。\n\n本報告為初步草稿，將於資安委員會下次會議提出完整分析。\n\n（報告完，全文所有姓名、證號、電話、地址、信箱、卡號、帳號、護照號碼、個人番號、車牌、IP、MAC位址、加密貨幣地址、IBAN、SWIFT代碼皆為虛構測試資料）\n",
+  "answer": [
+    [
+      "EMP-TW-008812",
+      "EMPLOYEE_ID"
+    ],
+    [
+      "A198765432",
+      "TW_ID"
+    ],
+    [
+      "0912-777-888",
+      "TW_PHONE"
+    ],
+    [
+      "junjie.huang.fake@example.com",
+      "EMAIL"
+    ],
+    [
+      "013-3344-556677889",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "1982年02月18日",
+      "DATE_OF_BIRTH"
+    ],
+    [
+      "高雄市苓雅區四維三路120號8樓",
+      "ADDRESS"
+    ],
+    [
+      "EMP-US-441209",
+      "EMPLOYEE_ID"
+    ],
+    [
+      "441-27-8890",
+      "US_SSN"
+    ],
+    [
+      "+1 (212) 555-0199",
+      "US_PHONE"
+    ],
+    [
+      "sarah.bennett.fake@example.com",
+      "EMAIL"
+    ],
+    [
+      "482 Lexington Ave, New York, NY 10017",
+      "ADDRESS"
+    ],
+    [
+      "3714 496353 98431",
+      "CREDIT_CARD"
+    ],
+    [
+      "NY-D9988771",
+      "DRIVER_LICENSE"
+    ],
+    [
+      "1234 5678 9012",
+      "JP_MY_NUMBER"
+    ],
+    [
+      "080-1234-5678",
+      "JP_PHONE"
+    ],
+    [
+      "kenta.tanaka.fake@example.jp",
+      "EMAIL"
+    ],
+    [
+      "TR3345678",
+      "PASSPORT"
+    ],
+    [
+      "みずほ銀行 新宿支店 普通 1234567",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "192.0.2.145",
+      "IP_ADDRESS"
+    ],
+    [
+      "AC:DE:48:00:11:22",
+      "MAC_ADDRESS"
+    ],
+    [
+      "https://vpn-internal-fake-corp.example.com/login",
+      "URL"
+    ],
+    [
+      "AAF-3210",
+      "LICENSE_PLATE"
+    ],
+    [
+      "DE89 3704 0044 0532 0130 00",
+      "IBAN"
+    ],
+    [
+      "COBADEFFXXX",
+      "SWIFT_CODE"
+    ],
+    [
+      "0x8f3CBe8B1a1A6e6E7c1e9E6D2f1B4a3C5d6E7F80",
+      "CRYPTO_WALLET"
+    ]
+  ]
+}

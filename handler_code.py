@@ -21,11 +21,11 @@ class Rule:
 
 RULES = [
     Rule("FILE_PATH", r"(?:[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]+)|(?:/(?:[^/\s]+/)+[^/\s]+)"),
-    Rule("JWT", r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"),
-    Rule("API_KEY_OPENAI", r"\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}\b"),
-    Rule("API_KEY_AWS", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
-    Rule("API_KEY_GITHUB", r"\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b"),
-    Rule("API_KEY_GOOGLE", r"\bAIza[0-9A-Za-z\-_]{35}\b"),
+    Rule("JWT", handler_text._L + r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+" + handler_text._R),
+    Rule("API_KEY_OPENAI", handler_text._L + r"sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}" + handler_text._R),
+    Rule("API_KEY_AWS", handler_text._L + r"(?:AKIA|ASIA)[0-9A-Z]{16}" + handler_text._R),
+    Rule("API_KEY_GITHUB", handler_text._L + r"(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}" + handler_text._R),
+    Rule("API_KEY_GOOGLE", handler_text._L + r"AIza[0-9A-Za-z\-_]{35}" + handler_text._R),
     # 範例：新增自己的規則就照這個格式加一行，例如：
     # Rule("DB_CONN_STRING", r"(?:postgres|mysql|mongodb)://[^\s\"']+"),
 ]
