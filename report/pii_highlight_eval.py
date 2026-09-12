@@ -8,13 +8,12 @@ from PIL import Image, ImageDraw, ImageFont
 #   格式: [(擷取到的文字, 標記的類別), ...]
 #   → 換成你自己模型/系統的輸出即可
 # ---------------------------------------------------------------------------
-DETECTION_RESULT = [('地址高雄市苓雅區四維三路120號8樓', 'ADDRESS'), ('D9988771', 'CREDENTIAL_LIKE'), ('TR3345678', 'CREDENTIAL_LIKE'), ('2026年08月30日', 'DATE_OF_BIRTH'), ('https://vpn-internal-fake-corp.example.com/login），該時段地下二樓監視器編號', 'URL'), ('0x8f3CBe8B1a1A6e6E7c1e9E6D2f1B4a3C5d6E7F80', 'GENERIC_SECRET')]
-
+DETECTION_RESULT =  [('D287654321', 'TW_ID'), ('7 0912', 'DATE_TIME'), ('S0etitte', 'CREDENTIAL_LIKE'), ('89856 3', 'DATE_TIME'), ('TWNIDEOOSE2S4', 'CREDENTIAL_LIKE'), ('202622208', 'DATE_TIME'), ('ARR', 'ORGANIZATION'), ('POLTWLAA', 'SWIFT_CODE'), ('Sas Blas Hm RR', 'PERSON'), ('67288 AD', 'DATE_TIME'), ('23456789', 'US_BANK_NUMBER'), ('0933-222-111', 'TW_PHONE'), ('Bia', 'PERSON'), ('7a 0132000012345', 'DATE_TIME'), ('ESHA', 'ORGANIZATION'), ('ARSCASRSEP DA SHO', 'PERSON'), ('EMPLOSSAT', 'ORGANIZATION'), ('OBOONIZ356', 'CREDENTIAL_LIKE'), ('2210', 'DATE_TIME'), ('claims@example-insurance.com', 'EMAIL'), ('AILIER IE', 'ORGANIZATION'), ('2026000S4107', 'CREDENTIAL_LIKE'), ('202653528', 'DATE_TIME'), ('ULSRSSRTE NEHER IP', 'ORGANIZATION'), ('DOBITANDRE -', 'ORGANIZATION'), ('88', 'DATE_TIME'), ('BrSeRRA', 'LOCATION')]
 
 # ---------------------------------------------------------------------------
 # 變數二：正確答案 (ground truth) 資料檔路徑 —— 內含 article 與 answer
 # ---------------------------------------------------------------------------
-GROUND_TRUTH_FILE = "presidio/t2.json"
+GROUND_TRUTH_FILE = "presidio/t1.json"
 
 OUTPUT_IMAGE = "report/pii_highlight_result.png"
 

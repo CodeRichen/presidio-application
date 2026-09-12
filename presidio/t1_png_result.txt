@@ -1,0 +1,44 @@
+==============================================================================
+剪貼簿敏感資訊防護 - 圖片/PDF 偵測測試報告（多版本評分，透過 handler_media）
+輸入檔案：d:\2.programm2\topic\presidio-application\presidio\t1.png
+答案筆數：28
+==============================================================================
+
+解答共 28 筆: [('王志明', 'PERSON_NAME'), ('Chih-Ming Wang', 'PERSON_NAME'), ('D287654321', 'TW_ID'), ('1985年3月14日', 'DATE_OF_BIRTH'), ('高雄市苓雅區四維三路168號9樓', 'ADDRESS'), ('0912-345-678', 'PHONE_NUMBER'), ('chihming.wang@example.com', 'EMAIL'), ('李佳蓉醫師', 'PERSON_NAME'), ('Dr. Chia-Jung Lee', 'PERSON_NAME'), ('TWMD-0098234', 'LICENSE_NUMBER'), ('CGH-20260214-0071', 'MEDICAL_RECORD_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE'), ('POL-TW-4471982', 'INSURANCE_POLICY_NUMBER'), ('陳美玲', 'PERSON_NAME'), ('A223456789', 'TW_ID'), ('0933-222-111', 'PHONE_NUMBER'), ('台灣銀行苓雅分行', 'BANK_NAME'), ('013-001-0012345-6', 'BANK_ACCOUNT'), ('王志明', 'PERSON_NAME'), ('張婉如', 'PERSON_NAME'), ('EMP-05821', 'EMPLOYEE_ID'), ('0800-123-456', 'PHONE_NUMBER'), ('07-2211334', 'PHONE_NUMBER'), ('claims@example-insurance.com.tw', 'EMAIL'), ('CLM-2026-0034127', 'CASE_NUMBER'), ('2026年3月2日', 'DATE'), ('高雄市新興區中山一路85號3樓', 'ADDRESS'), ('203.74.12.88', 'IP_ADDRESS')]
+實際偵測到 27 筆: [('D287654321', 'TW_ID'), ('7 0912', 'DATE_TIME'), ('S0etitte', 'CREDENTIAL_LIKE'), ('89856 3', 'DATE_TIME'), ('TWNIDEOOSE2S4', 'CREDENTIAL_LIKE'), ('202622208', 'DATE_TIME'), ('ARR', 'ORGANIZATION'), ('POLTWLAA', 'SWIFT_CODE'), ('Sas Blas Hm RR', 'PERSON'), ('67288 AD', 'DATE_TIME'), ('23456789', 'US_BANK_NUMBER'), ('0933-222-111', 'TW_PHONE'), ('Bia', 'PERSON'), ('7a 0132000012345', 'DATE_TIME'), ('ESHA', 'ORGANIZATION'), ('ARSCASRSEP DA SHO', 'PERSON'), ('EMPLOSSAT', 'ORGANIZATION'), ('OBOONIZ356', 'CREDENTIAL_LIKE'), ('2210', 'DATE_TIME'), ('claims@example-insurance.com', 'EMAIL'), ('AILIER IE', 'ORGANIZATION'), ('2026000S4107', 'CREDENTIAL_LIKE'), ('202653528', 'DATE_TIME'), ('ULSRSSRTE NEHER IP', 'ORGANIZATION'), ('DOBITANDRE -', 'ORGANIZATION'), ('88', 'DATE_TIME'), ('BrSeRRA', 'LOCATION')]
+
+------------------------------------------------------------------------------
+版本一：嚴格比對（值完全一致 + 類型完全一致）
+------------------------------------------------------------------------------
+命中(TP): 1  誤判(FP): 26  漏判(FN): 27
+誤判內容: [('7 0912', 'DATE_TIME'), ('S0etitte', 'CREDENTIAL_LIKE'), ('89856 3', 'DATE_TIME'), ('TWNIDEOOSE2S4', 'CREDENTIAL_LIKE'), ('202622208', 'DATE_TIME'), ('ARR', 'ORGANIZATION'), ('POLTWLAA', 'SWIFT_CODE'), ('Sas Blas Hm RR', 'PERSON'), ('67288 AD', 'DATE_TIME'), ('23456789', 'US_BANK_NUMBER'), ('0933-222-111', 'TW_PHONE'), ('Bia', 'PERSON'), ('7a 0132000012345', 'DATE_TIME'), ('ESHA', 'ORGANIZATION'), ('ARSCASRSEP DA SHO', 'PERSON'), ('EMPLOSSAT', 'ORGANIZATION'), ('OBOONIZ356', 'CREDENTIAL_LIKE'), ('2210', 'DATE_TIME'), ('claims@example-insurance.com', 'EMAIL'), ('AILIER IE', 'ORGANIZATION'), ('2026000S4107', 'CREDENTIAL_LIKE'), ('202653528', 'DATE_TIME'), ('ULSRSSRTE NEHER IP', 'ORGANIZATION'), ('DOBITANDRE -', 'ORGANIZATION'), ('88', 'DATE_TIME'), ('BrSeRRA', 'LOCATION')]
+漏判內容: [('王志明', 'PERSON_NAME'), ('Chih-Ming Wang', 'PERSON_NAME'), ('1985年3月14日', 'DATE_OF_BIRTH'), ('高雄市苓雅區四維三路168號9樓', 'ADDRESS'), ('0912-345-678', 'PHONE_NUMBER'), ('chihming.wang@example.com', 'EMAIL'), ('李佳蓉醫師', 'PERSON_NAME'), ('Dr. Chia-Jung Lee', 'PERSON_NAME'), ('TWMD-0098234', 'LICENSE_NUMBER'), ('CGH-20260214-0071', 'MEDICAL_RECORD_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE'), ('POL-TW-4471982', 'INSURANCE_POLICY_NUMBER'), ('陳美玲', 'PERSON_NAME'), ('A223456789', 'TW_ID'), ('0933-222-111', 'PHONE_NUMBER'), ('台灣銀行苓雅分行', 'BANK_NAME'), ('013-001-0012345-6', 'BANK_ACCOUNT'), ('王志明', 'PERSON_NAME'), ('張婉如', 'PERSON_NAME'), ('EMP-05821', 'EMPLOYEE_ID'), ('0800-123-456', 'PHONE_NUMBER'), ('07-2211334', 'PHONE_NUMBER'), ('claims@example-insurance.com.tw', 'EMAIL'), ('CLM-2026-0034127', 'CASE_NUMBER'), ('2026年3月2日', 'DATE'), ('高雄市新興區中山一路85號3樓', 'ADDRESS'), ('203.74.12.88', 'IP_ADDRESS')]
+Precision: 3.70%
+Recall   : 3.57%
+F1 Score : 3.64%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本二：寬鬆比對（值有重疊即可，但類型需正確）
+------------------------------------------------------------------------------
+命中(TP): 2  誤判(FP): 25  漏判(FN): 26
+誤判內容: [('7 0912', 'DATE_TIME'), ('S0etitte', 'CREDENTIAL_LIKE'), ('89856 3', 'DATE_TIME'), ('TWNIDEOOSE2S4', 'CREDENTIAL_LIKE'), ('202622208', 'DATE_TIME'), ('ARR', 'ORGANIZATION'), ('POLTWLAA', 'SWIFT_CODE'), ('Sas Blas Hm RR', 'PERSON'), ('67288 AD', 'DATE_TIME'), ('23456789', 'US_BANK_NUMBER'), ('0933-222-111', 'TW_PHONE'), ('Bia', 'PERSON'), ('7a 0132000012345', 'DATE_TIME'), ('ESHA', 'ORGANIZATION'), ('ARSCASRSEP DA SHO', 'PERSON'), ('EMPLOSSAT', 'ORGANIZATION'), ('OBOONIZ356', 'CREDENTIAL_LIKE'), ('2210', 'DATE_TIME'), ('AILIER IE', 'ORGANIZATION'), ('2026000S4107', 'CREDENTIAL_LIKE'), ('202653528', 'DATE_TIME'), ('ULSRSSRTE NEHER IP', 'ORGANIZATION'), ('DOBITANDRE -', 'ORGANIZATION'), ('88', 'DATE_TIME'), ('BrSeRRA', 'LOCATION')]
+漏判內容: [('王志明', 'PERSON_NAME'), ('Chih-Ming Wang', 'PERSON_NAME'), ('1985年3月14日', 'DATE_OF_BIRTH'), ('高雄市苓雅區四維三路168號9樓', 'ADDRESS'), ('0912-345-678', 'PHONE_NUMBER'), ('chihming.wang@example.com', 'EMAIL'), ('李佳蓉醫師', 'PERSON_NAME'), ('Dr. Chia-Jung Lee', 'PERSON_NAME'), ('TWMD-0098234', 'LICENSE_NUMBER'), ('CGH-20260214-0071', 'MEDICAL_RECORD_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE'), ('POL-TW-4471982', 'INSURANCE_POLICY_NUMBER'), ('陳美玲', 'PERSON_NAME'), ('A223456789', 'TW_ID'), ('0933-222-111', 'PHONE_NUMBER'), ('台灣銀行苓雅分行', 'BANK_NAME'), ('013-001-0012345-6', 'BANK_ACCOUNT'), ('王志明', 'PERSON_NAME'), ('張婉如', 'PERSON_NAME'), ('EMP-05821', 'EMPLOYEE_ID'), ('0800-123-456', 'PHONE_NUMBER'), ('07-2211334', 'PHONE_NUMBER'), ('CLM-2026-0034127', 'CASE_NUMBER'), ('2026年3月2日', 'DATE'), ('高雄市新興區中山一路85號3樓', 'ADDRESS'), ('203.74.12.88', 'IP_ADDRESS')]
+Precision: 7.41%
+Recall   : 7.14%
+F1 Score : 7.27%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本三：最寬鬆比對（值有重疊即算對，不論類型）
+------------------------------------------------------------------------------
+命中(TP): 5  誤判(FP): 22  漏判(FN): 23
+誤判內容: [('7 0912', 'DATE_TIME'), ('S0etitte', 'CREDENTIAL_LIKE'), ('89856 3', 'DATE_TIME'), ('TWNIDEOOSE2S4', 'CREDENTIAL_LIKE'), ('202622208', 'DATE_TIME'), ('ARR', 'ORGANIZATION'), ('POLTWLAA', 'SWIFT_CODE'), ('Sas Blas Hm RR', 'PERSON'), ('67288 AD', 'DATE_TIME'), ('Bia', 'PERSON'), ('7a 0132000012345', 'DATE_TIME'), ('ESHA', 'ORGANIZATION'), ('ARSCASRSEP DA SHO', 'PERSON'), ('EMPLOSSAT', 'ORGANIZATION'), ('OBOONIZ356', 'CREDENTIAL_LIKE'), ('2210', 'DATE_TIME'), ('AILIER IE', 'ORGANIZATION'), ('2026000S4107', 'CREDENTIAL_LIKE'), ('202653528', 'DATE_TIME'), ('ULSRSSRTE NEHER IP', 'ORGANIZATION'), ('DOBITANDRE -', 'ORGANIZATION'), ('BrSeRRA', 'LOCATION')]
+漏判內容: [('王志明', 'PERSON_NAME'), ('Chih-Ming Wang', 'PERSON_NAME'), ('1985年3月14日', 'DATE_OF_BIRTH'), ('高雄市苓雅區四維三路168號9樓', 'ADDRESS'), ('0912-345-678', 'PHONE_NUMBER'), ('chihming.wang@example.com', 'EMAIL'), ('李佳蓉醫師', 'PERSON_NAME'), ('Dr. Chia-Jung Lee', 'PERSON_NAME'), ('TWMD-0098234', 'LICENSE_NUMBER'), ('CGH-20260214-0071', 'MEDICAL_RECORD_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE'), ('POL-TW-4471982', 'INSURANCE_POLICY_NUMBER'), ('陳美玲', 'PERSON_NAME'), ('台灣銀行苓雅分行', 'BANK_NAME'), ('013-001-0012345-6', 'BANK_ACCOUNT'), ('王志明', 'PERSON_NAME'), ('張婉如', 'PERSON_NAME'), ('EMP-05821', 'EMPLOYEE_ID'), ('0800-123-456', 'PHONE_NUMBER'), ('07-2211334', 'PHONE_NUMBER'), ('CLM-2026-0034127', 'CASE_NUMBER'), ('2026年3月2日', 'DATE'), ('高雄市新興區中山一路85號3樓', 'ADDRESS')]
+Precision: 18.52%
+Recall   : 17.86%
+F1 Score : 18.18%
+結果: ✘ 有誤判或漏判
+
+(遮蔽後檔案與對照表存在暫存資料夾，僅供檢查，不影響正式環境: C:\Users\User\AppData\Local\Temp\presidio_media_test_2z9l4rz4)
+==============================================================================

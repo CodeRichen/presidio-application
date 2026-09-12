@@ -1,0 +1,46 @@
+==============================================================================
+剪貼簿敏感資訊防護 - 單篇文章 一次複製/貼上 測試報告（多版本評分）
+文章長度：585 字元　答案筆數：23
+==============================================================================
+
+[複製] 整篇偵測+遮蔽耗時: 253.109 ms
+[貼上] 耗時: 100.353 ms | 剪貼簿內容維持不變(符合 on_paste 設計): OK
+[還原] 複製回來耗時: 251.634 ms | 完全還原成原始文章: OK
+[分類] 文章整體判斷: 一般文字
+
+解答共 23 筆: [['吳冠廷', 'PERSON_NAME'], ['Kuan-Ting Wu', 'PERSON_NAME'], ['ORD-TW-88213467', 'ORDER_NUMBER'], ['台中市西屯區台灣大道三段99號20樓之3', 'ADDRESS'], ['0987-654-321', 'PHONE_NUMBER'], ['kuanting.wu88@shopmail.com', 'EMAIL'], ['Global Gadget Co., Ltd.', 'ORGANIZATION'], ['1Z999AA10123456784', 'TRACKING_NUMBER'], ['654321', 'TW_ID_PARTIAL'], ['P3345678', 'PASSPORT_NUMBER'], ['吳冠廷', 'PERSON_NAME'], ['4392', 'CREDIT_CARD_LAST4'], ['中國信託商業銀行', 'BANK_NAME'], ['AUTH-2026-771029', 'TRANSACTION_AUTH_CODE'], ['黃思穎', 'PERSON_NAME'], ['LOG-33210', 'EMPLOYEE_ID'], ['0922-334-455', 'PHONE_NUMBER'], ['ABC-1234', 'LICENSE_PLATE'], ['118.99.23.4', 'IP_ADDRESS'], ['support@globalgadget-tw.com', 'EMAIL'], ['0809-000-111', 'PHONE_NUMBER'], ['LOG-2026-004471', 'CASE_NUMBER'], ['2026年6月9日', 'DATE']]
+實際偵測到 11 筆: [('台中市西屯區台灣大道三段99號20樓', 'ADDRESS'), ('0987-654-321', 'TW_PHONE'), ('kuanting.wu88@shopmail.com', 'EMAIL'), ('1Z999AA10123456784', 'CREDENTIAL_LIKE'), ('P3345678', 'CREDENTIAL_LIKE'), ('0922-334-455', 'TW_PHONE'), ('ABC-1234', 'LICENSE_PLATE'), ('118.99.23.4', 'IP_ADDRESS'), ('support@globalgadget-tw.com', 'EMAIL'), ('LOG-2026', 'LICENSE_PLATE'), ('2026年6月9日', 'DATE_OF_BIRTH')]
+
+------------------------------------------------------------------------------
+版本一：嚴格比對（起訖位置 + 類型完全一致）
+------------------------------------------------------------------------------
+命中(TP): 4  誤判(FP): 7  漏判(FN): 19
+誤判內容: [('台中市西屯區台灣大道三段99號20樓', 'ADDRESS'), ('0987-654-321', 'TW_PHONE'), ('1Z999AA10123456784', 'CREDENTIAL_LIKE'), ('P3345678', 'CREDENTIAL_LIKE'), ('0922-334-455', 'TW_PHONE'), ('LOG-2026', 'LICENSE_PLATE'), ('2026年6月9日', 'DATE_OF_BIRTH')]
+漏判內容: [('吳冠廷', 'PERSON_NAME'), ('Kuan-Ting Wu', 'PERSON_NAME'), ('ORD-TW-88213467', 'ORDER_NUMBER'), ('台中市西屯區台灣大道三段99號20樓之3', 'ADDRESS'), ('0987-654-321', 'PHONE_NUMBER'), ('Global Gadget Co., Ltd.', 'ORGANIZATION'), ('1Z999AA10123456784', 'TRACKING_NUMBER'), ('654321', 'TW_ID_PARTIAL'), ('P3345678', 'PASSPORT_NUMBER'), ('吳冠廷', 'PERSON_NAME'), ('4392', 'CREDIT_CARD_LAST4'), ('中國信託商業銀行', 'BANK_NAME'), ('AUTH-2026-771029', 'TRANSACTION_AUTH_CODE'), ('黃思穎', 'PERSON_NAME'), ('LOG-33210', 'EMPLOYEE_ID'), ('0922-334-455', 'PHONE_NUMBER'), ('0809-000-111', 'PHONE_NUMBER'), ('LOG-2026-004471', 'CASE_NUMBER'), ('2026年6月9日', 'DATE')]
+Precision: 36.36%
+Recall   : 17.39%
+F1 Score : 23.53%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本二：寬鬆比對（範圍有重疊即可，但類型需正確）
+------------------------------------------------------------------------------
+命中(TP): 5  誤判(FP): 6  漏判(FN): 18
+誤判內容: [('0987-654-321', 'TW_PHONE'), ('1Z999AA10123456784', 'CREDENTIAL_LIKE'), ('P3345678', 'CREDENTIAL_LIKE'), ('0922-334-455', 'TW_PHONE'), ('LOG-2026', 'LICENSE_PLATE'), ('2026年6月9日', 'DATE_OF_BIRTH')]
+漏判內容: [('吳冠廷', 'PERSON_NAME'), ('Kuan-Ting Wu', 'PERSON_NAME'), ('ORD-TW-88213467', 'ORDER_NUMBER'), ('0987-654-321', 'PHONE_NUMBER'), ('Global Gadget Co., Ltd.', 'ORGANIZATION'), ('1Z999AA10123456784', 'TRACKING_NUMBER'), ('654321', 'TW_ID_PARTIAL'), ('P3345678', 'PASSPORT_NUMBER'), ('吳冠廷', 'PERSON_NAME'), ('4392', 'CREDIT_CARD_LAST4'), ('中國信託商業銀行', 'BANK_NAME'), ('AUTH-2026-771029', 'TRANSACTION_AUTH_CODE'), ('黃思穎', 'PERSON_NAME'), ('LOG-33210', 'EMPLOYEE_ID'), ('0922-334-455', 'PHONE_NUMBER'), ('0809-000-111', 'PHONE_NUMBER'), ('LOG-2026-004471', 'CASE_NUMBER'), ('2026年6月9日', 'DATE')]
+Precision: 45.45%
+Recall   : 21.74%
+F1 Score : 29.41%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本三：最寬鬆比對（範圍有重疊即算對，不論類型）
+------------------------------------------------------------------------------
+命中(TP): 11  誤判(FP): 0  漏判(FN): 12
+漏判內容: [('吳冠廷', 'PERSON_NAME'), ('Kuan-Ting Wu', 'PERSON_NAME'), ('ORD-TW-88213467', 'ORDER_NUMBER'), ('Global Gadget Co., Ltd.', 'ORGANIZATION'), ('654321', 'TW_ID_PARTIAL'), ('吳冠廷', 'PERSON_NAME'), ('4392', 'CREDIT_CARD_LAST4'), ('中國信託商業銀行', 'BANK_NAME'), ('AUTH-2026-771029', 'TRANSACTION_AUTH_CODE'), ('黃思穎', 'PERSON_NAME'), ('LOG-33210', 'EMPLOYEE_ID'), ('0809-000-111', 'PHONE_NUMBER')]
+Precision: 100.00%
+Recall   : 47.83%
+F1 Score : 64.71%
+結果: ✘ 有誤判或漏判
+
+==============================================================================
