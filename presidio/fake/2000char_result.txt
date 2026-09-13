@@ -1,0 +1,47 @@
+==============================================================================
+剪貼簿敏感資訊防護 - 單篇文章 一次複製/貼上 測試報告（多版本評分）
+文章長度：1967 字元　答案筆數：44
+==============================================================================
+
+[複製] 整篇偵測+遮蔽耗時: 255.205 ms
+[貼上] 耗時: 101.194 ms | 剪貼簿內容維持不變(符合 on_paste 設計): OK
+[還原] 複製回來耗時: 251.630 ms | 完全還原成原始文章: OK
+[分類] 文章整體判斷: 一般文字
+
+解答共 44 筆: [['晶耀半導體股份有限公司', 'ORGANIZATION'], ['許嘉豪', 'PERSON_NAME'], ['Chia-Hao Hsu', 'PERSON_NAME'], ['F220456781', 'TW_ID'], ['1993年11月2日', 'DATE_OF_BIRTH'], ['台南市東區大學路22巷8號4樓', 'ADDRESS'], ['台南市北區公園北路150號6樓之2', 'ADDRESS'], ['0928-773-410', 'PHONE_NUMBER'], ['chiahao.hsu93@personalmail.com', 'EMAIL'], ['HR-2026-01187', 'EMPLOYEE_ID'], ['蔡明宗', 'PERSON_NAME'], ['MGR-00452', 'EMPLOYEE_ID'], ['006-772-0091234-5', 'BANK_ACCOUNT'], ['許陳寶珠', 'PERSON_NAME'], ['0955-661-228', 'PHONE_NUMBER'], ['林淑芬', 'PERSON_NAME'], ['ADM-00873', 'EMPLOYEE_ID'], ['ID-2026-3391', 'ID_CARD_NUMBER'], ['ACC-778812', 'ACCESS_CARD_NUMBER'], ['chsu@crystalshine-semi.com.tw', 'EMAIL'], ['61.220.98.147', 'IP_ADDRESS'], ['SEC-2026-00987', 'CASE_NUMBER'], ['周柏翰', 'PERSON_NAME'], ['SEC-01123', 'EMPLOYEE_ID'], ['0966-334-778', 'PHONE_NUMBER'], ['pohan.chou@crystalshine-semi.com.tw', 'EMAIL'], ['it-support@crystalshine-semi.com', 'EMAIL'], ['crystalshine-semi.com.tw', 'DOMAIN'], ['61.220.98.147', 'IP_ADDRESS'], ['鄭雅雯', 'PERSON_NAME'], ['LEG-00291', 'EMPLOYEE_ID'], ['02-2758-3312', 'PHONE_NUMBER'], ['SEC-2026-00987-CLOSED', 'CASE_NUMBER'], ['2026年7月20日', 'DATE'], ['謝志偉', 'PERSON_NAME'], ['MGR-00119', 'EMPLOYEE_ID'], ['0919-556-877', 'PHONE_NUMBER'], ['2026年7月25日', 'DATE'], ['2026年8月3日', 'DATE'], ['legal@crystalshine-semi.com.tw', 'EMAIL'], ['2026年7月21日', 'DATE'], ['黃詩涵', 'PERSON_NAME'], ['HR-00674', 'EMPLOYEE_ID'], ['0937-224-661', 'PHONE_NUMBER']]
+實際偵測到 23 筆: [('2026年6月1日', 'DATE_OF_BIRTH'), ('F220456781', 'TW_ID'), ('1993年11月2日', 'DATE_OF_BIRTH'), ('0928-773-410', 'TW_PHONE'), ('chiahao.hsu93@personalmail.com', 'EMAIL'), ('006-772-0091234', 'BANK_ACCOUNT'), ('0955-661-228', 'TW_PHONE'), ('2026年7月14日', 'DATE_OF_BIRTH'), ('chsu@crystalshine-semi.com.tw', 'EMAIL'), ('61.220.98.147', 'IP_ADDRESS'), ('SEC-2026', 'LICENSE_PLATE'), ('0966-334-778', 'TW_PHONE'), ('pohan.chou@crystalshine-semi.com.tw', 'EMAIL'), ('it-support@crystalshine-semi.com', 'EMAIL'), ('61.220.98.147', 'IP_ADDRESS'), ('SEC-2026', 'LICENSE_PLATE'), ('2026年7月20日', 'DATE_OF_BIRTH'), ('0919-556-877', 'TW_PHONE'), ('2026年7月25日', 'DATE_OF_BIRTH'), ('2026年8月3日', 'DATE_OF_BIRTH'), ('legal@crystalshine-semi.com.tw', 'EMAIL'), ('2026年7月21日', 'DATE_OF_BIRTH'), ('0937-224-661', 'TW_PHONE')]
+
+------------------------------------------------------------------------------
+版本一：嚴格比對（起訖位置 + 類型完全一致）
+------------------------------------------------------------------------------
+命中(TP): 9  誤判(FP): 14  漏判(FN): 35
+誤判內容: [('2026年6月1日', 'DATE_OF_BIRTH'), ('0928-773-410', 'TW_PHONE'), ('006-772-0091234', 'BANK_ACCOUNT'), ('0955-661-228', 'TW_PHONE'), ('2026年7月14日', 'DATE_OF_BIRTH'), ('SEC-2026', 'LICENSE_PLATE'), ('0966-334-778', 'TW_PHONE'), ('SEC-2026', 'LICENSE_PLATE'), ('2026年7月20日', 'DATE_OF_BIRTH'), ('0919-556-877', 'TW_PHONE'), ('2026年7月25日', 'DATE_OF_BIRTH'), ('2026年8月3日', 'DATE_OF_BIRTH'), ('2026年7月21日', 'DATE_OF_BIRTH'), ('0937-224-661', 'TW_PHONE')]
+漏判內容: [('晶耀半導體股份有限公司', 'ORGANIZATION'), ('許嘉豪', 'PERSON_NAME'), ('Chia-Hao Hsu', 'PERSON_NAME'), ('台南市東區大學路22巷8號4樓', 'ADDRESS'), ('台南市北區公園北路150號6樓之2', 'ADDRESS'), ('0928-773-410', 'PHONE_NUMBER'), ('HR-2026-01187', 'EMPLOYEE_ID'), ('蔡明宗', 'PERSON_NAME'), ('MGR-00452', 'EMPLOYEE_ID'), ('006-772-0091234-5', 'BANK_ACCOUNT'), ('許陳寶珠', 'PERSON_NAME'), ('0955-661-228', 'PHONE_NUMBER'), ('林淑芬', 'PERSON_NAME'), ('ADM-00873', 'EMPLOYEE_ID'), ('ID-2026-3391', 'ID_CARD_NUMBER'), ('ACC-778812', 'ACCESS_CARD_NUMBER'), ('SEC-2026-00987', 'CASE_NUMBER'), ('周柏翰', 'PERSON_NAME'), ('SEC-01123', 'EMPLOYEE_ID'), ('0966-334-778', 'PHONE_NUMBER'), ('crystalshine-semi.com.tw', 'DOMAIN'), ('鄭雅雯', 'PERSON_NAME'), ('LEG-00291', 'EMPLOYEE_ID'), ('02-2758-3312', 'PHONE_NUMBER'), ('SEC-2026-00987-CLOSED', 'CASE_NUMBER'), ('2026年7月20日', 'DATE'), ('謝志偉', 'PERSON_NAME'), ('MGR-00119', 'EMPLOYEE_ID'), ('0919-556-877', 'PHONE_NUMBER'), ('2026年7月25日', 'DATE'), ('2026年8月3日', 'DATE'), ('2026年7月21日', 'DATE'), ('黃詩涵', 'PERSON_NAME'), ('HR-00674', 'EMPLOYEE_ID'), ('0937-224-661', 'PHONE_NUMBER')]
+Precision: 39.13%
+Recall   : 20.45%
+F1 Score : 26.87%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本二：寬鬆比對（範圍有重疊即可，但類型需正確）
+------------------------------------------------------------------------------
+命中(TP): 10  誤判(FP): 13  漏判(FN): 34
+誤判內容: [('2026年6月1日', 'DATE_OF_BIRTH'), ('0928-773-410', 'TW_PHONE'), ('0955-661-228', 'TW_PHONE'), ('2026年7月14日', 'DATE_OF_BIRTH'), ('SEC-2026', 'LICENSE_PLATE'), ('0966-334-778', 'TW_PHONE'), ('SEC-2026', 'LICENSE_PLATE'), ('2026年7月20日', 'DATE_OF_BIRTH'), ('0919-556-877', 'TW_PHONE'), ('2026年7月25日', 'DATE_OF_BIRTH'), ('2026年8月3日', 'DATE_OF_BIRTH'), ('2026年7月21日', 'DATE_OF_BIRTH'), ('0937-224-661', 'TW_PHONE')]
+漏判內容: [('晶耀半導體股份有限公司', 'ORGANIZATION'), ('許嘉豪', 'PERSON_NAME'), ('Chia-Hao Hsu', 'PERSON_NAME'), ('台南市東區大學路22巷8號4樓', 'ADDRESS'), ('台南市北區公園北路150號6樓之2', 'ADDRESS'), ('0928-773-410', 'PHONE_NUMBER'), ('HR-2026-01187', 'EMPLOYEE_ID'), ('蔡明宗', 'PERSON_NAME'), ('MGR-00452', 'EMPLOYEE_ID'), ('許陳寶珠', 'PERSON_NAME'), ('0955-661-228', 'PHONE_NUMBER'), ('林淑芬', 'PERSON_NAME'), ('ADM-00873', 'EMPLOYEE_ID'), ('ID-2026-3391', 'ID_CARD_NUMBER'), ('ACC-778812', 'ACCESS_CARD_NUMBER'), ('SEC-2026-00987', 'CASE_NUMBER'), ('周柏翰', 'PERSON_NAME'), ('SEC-01123', 'EMPLOYEE_ID'), ('0966-334-778', 'PHONE_NUMBER'), ('crystalshine-semi.com.tw', 'DOMAIN'), ('鄭雅雯', 'PERSON_NAME'), ('LEG-00291', 'EMPLOYEE_ID'), ('02-2758-3312', 'PHONE_NUMBER'), ('SEC-2026-00987-CLOSED', 'CASE_NUMBER'), ('2026年7月20日', 'DATE'), ('謝志偉', 'PERSON_NAME'), ('MGR-00119', 'EMPLOYEE_ID'), ('0919-556-877', 'PHONE_NUMBER'), ('2026年7月25日', 'DATE'), ('2026年8月3日', 'DATE'), ('2026年7月21日', 'DATE'), ('黃詩涵', 'PERSON_NAME'), ('HR-00674', 'EMPLOYEE_ID'), ('0937-224-661', 'PHONE_NUMBER')]
+Precision: 43.48%
+Recall   : 22.73%
+F1 Score : 29.85%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本三：最寬鬆比對（範圍有重疊即算對，不論類型）
+------------------------------------------------------------------------------
+命中(TP): 21  誤判(FP): 2  漏判(FN): 23
+誤判內容: [('2026年6月1日', 'DATE_OF_BIRTH'), ('2026年7月14日', 'DATE_OF_BIRTH')]
+漏判內容: [('晶耀半導體股份有限公司', 'ORGANIZATION'), ('許嘉豪', 'PERSON_NAME'), ('Chia-Hao Hsu', 'PERSON_NAME'), ('台南市東區大學路22巷8號4樓', 'ADDRESS'), ('台南市北區公園北路150號6樓之2', 'ADDRESS'), ('HR-2026-01187', 'EMPLOYEE_ID'), ('蔡明宗', 'PERSON_NAME'), ('MGR-00452', 'EMPLOYEE_ID'), ('許陳寶珠', 'PERSON_NAME'), ('林淑芬', 'PERSON_NAME'), ('ADM-00873', 'EMPLOYEE_ID'), ('ID-2026-3391', 'ID_CARD_NUMBER'), ('ACC-778812', 'ACCESS_CARD_NUMBER'), ('周柏翰', 'PERSON_NAME'), ('SEC-01123', 'EMPLOYEE_ID'), ('crystalshine-semi.com.tw', 'DOMAIN'), ('鄭雅雯', 'PERSON_NAME'), ('LEG-00291', 'EMPLOYEE_ID'), ('02-2758-3312', 'PHONE_NUMBER'), ('謝志偉', 'PERSON_NAME'), ('MGR-00119', 'EMPLOYEE_ID'), ('黃詩涵', 'PERSON_NAME'), ('HR-00674', 'EMPLOYEE_ID')]
+Precision: 91.30%
+Recall   : 47.73%
+F1 Score : 62.69%
+結果: ✘ 有誤判或漏判
+
+==============================================================================

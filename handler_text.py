@@ -19,6 +19,10 @@
 import re
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Tuple
+import os
+os.environ["HF_HUB_OFFLINE"] = "1"          # huggingface_hub 完全離線
+os.environ["TRANSFORMERS_OFFLINE"] = "1"    # transformers 也跟著離線
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # 順手關掉遙測回報
 
 MIN_ZH_NER_SCORE = 0.7  # CKIP 判斷的信心分數門檻，低於這個值直接丟掉不採用；想放寬/收緊調這個數字即可
 
@@ -31,8 +35,8 @@ try:
     nlp_configuration = {
         "nlp_engine_name": "spacy",
         "models": [
-            {"lang_code": "zh", "model_name": "zh_core_web_sm"},  # python -m spacy download zh_core_web_sm
-            {"lang_code": "en", "model_name": "en_core_web_sm"},
+            {"lang_code": "zh", "model_name": "zh_core_web_sm"},  
+            {"lang_code": "en", "model_name": "en_core_web_trf"}, # 這邊從sm改掉會有幫助嗎?
         ],
     }
     _nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
@@ -42,7 +46,7 @@ try:
         def __init__(self):
             super().__init__(supported_entities=["PERSON", "LOCATION", "ORGANIZATION"],
                               supported_language="zh")
-            print("正在載入 Hugging Face 中文 NER 模型 (ckiplab/bert-base-chinese-ner)...")
+            # print("正在載入 Hugging Face 中文 NER 模型 (ckiplab/bert-base-chinese-ner)...")
             self.ner_pipeline = pipeline("ner", model="ckiplab/bert-base-chinese-ner",
                                           aggregation_strategy="simple")
 
@@ -62,19 +66,29 @@ try:
 
     # ---- 3. 手動組 registry：英文照 Presidio 內建規則正常載入；中文只掛 CKIP 這一個辨識器，
     #          不讓 Presidio 自動載入 zh_core_web_sm 內建的 NER 辨識器，避免跟 CKIP 重複判斷 ----
+    _chinese_recognizer = None
     try:
-        _registry = RecognizerRegistry()
+        _chinese_recognizer = CustomHfChineseRecognizer()  # 只建立一次，不管走哪個分支都重複使用，避免重複載入模型
+    except Exception as e:
+        print(f"[警告] 中文 NER 模型載入失敗，中文只會用英文那組規則式辨識器：{e}")
+
+    try:
+        # supported_languages 一定要跟下面 AnalyzerEngine 給的一致，不然 Presidio 會直接丟例外
+        _registry = RecognizerRegistry(supported_languages=["en", "zh"])
         _registry.load_predefined_recognizers(languages=["en"])
-        _registry.add_recognizer(CustomHfChineseRecognizer())
+        if _chinese_recognizer:
+            _registry.add_recognizer(_chinese_recognizer)
         _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, registry=_registry, supported_languages=["zh", "en"])
+        # print("Presidio AnalyzerEngine 建立成功，已掛載中文 CKIP NER 模型")
     except Exception as e:
         # 萬一 Presidio 版本的 registry API 不一樣，退回舊做法(中文會跟 spaCy 內建 NER 重複判斷，但至少能跑)
         print(f"[警告] 自訂 registry 建立失敗，改用預設設定：{e}")
         _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["zh", "en"])
-        try:
-            _analyzer.registry.add_recognizer(CustomHfChineseRecognizer())
-        except Exception:
-            pass
+        if _chinese_recognizer:
+            try:
+                _analyzer.registry.add_recognizer(_chinese_recognizer)
+            except Exception:
+                pass
 except Exception:
     _analyzer = None  # 完全沒裝 presidio/transformers 時，自動退化成只用下面的正則規則
 
@@ -89,6 +103,9 @@ def _presidio_call(text: str, lang: str) -> List[Tuple[int, int, str, float]]:
     if _analyzer is None:
         return []
     try:
+        # print("Presidio分析結果:")
+        # for r in _analyzer.analyze(text=text, language=lang):
+            # print(r.start, r.end, r.entity_type, round(float(r.score), 2))
         return [(r.start, r.end, r.entity_type, round(float(r.score), 2))
                 for r in _analyzer.analyze(text=text, language=lang)
                 if r.entity_type not in EXCLUDED_PRESIDIO_LABELS]

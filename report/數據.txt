@@ -6,3 +6,10 @@ en_core_web_lg 424.5M
 en_core_web_trf 477.5M
 models--ckiplab--bert-base-chinese-ner 776M
 Tesseract OCR 238M
+55 字元 耗時: 253.051 ms
+702 字元 耗時:  254.053 ms
+1967 字元 耗時: 253.051 ms
+8234 字元 耗時: 262.256 ms
+16227 字元 耗時: 273.497 ms
+單張圖片 耗時: 890.230 ms
+4頁pdf 10311.108 ms

@@ -146,6 +146,17 @@ def run_text_flow(article, answer, result_file):
         traceback.print_exc()
         sys.exit(1)
 
+    # ---- 暖機：先觸發一次偵測，把 NER 模型(以及可能的 registry fallback)載入完成，
+    #      這樣才不會把「模型第一次載入」的時間算進下面的正式計時。這裡故意不靜音，
+    #      讓你看得到載入過程有沒有跑完。----
+    print("\n[暖機] 觸發模型載入(僅第一次需要，不計入下方計時)...")
+    try:
+        _warmup_text = "暖機用測試文字 test123 test@example.com"
+        (main.handler_code if main.is_code_text(_warmup_text) else main.handler_text).detect(_warmup_text)
+    except Exception:
+        traceback.print_exc()
+    print("[暖機] 完成，開始正式測試\n")
+
     def detect_with_offsets(text):
         is_code = main.is_code_text(text)
         matches = main.handler_code.detect(text) if is_code else main.handler_text.detect(text)
@@ -323,10 +334,21 @@ def run_media_flow(path, answer, result_file):
     map_file = os.path.join(tmp_dir, "media_test_map.json")
 
     print(f"呼叫 handler_media 進行偵測 + 遮蔽... (輸出: {output_path})")
+
+    # ---- 暖機：先觸發一次偵測，把 NER 模型載入完成，避免第一次載入時間被算進下面的計時。----
+    print("[暖機] 觸發模型載入(僅第一次需要，不計入下方計時)...")
+    try:
+        handler_media.detect_matches("暖機用測試文字 test123 test@example.com")
+    except Exception:
+        traceback.print_exc()
+    print("[暖機] 完成，開始正式測試")
+
+    t0 = time.perf_counter()
     if ext in PDF_EXTS:
         entries = handler_media.mask_pdf(path, output_path, map_file)
     else:
         entries = handler_media.mask_image(path, output_path, map_file)
+    t1 = time.perf_counter()
 
     detected = [((e.get("value") or "").strip(), e["label"]) for e in entries]
     expected = [(str(v).strip(), lbl) for v, lbl in answer]
@@ -339,6 +361,8 @@ def run_media_flow(path, answer, result_file):
     out(f"輸入檔案：{path}")
     out(f"答案筆數：{len(expected)}")
     out("=" * 78)
+    out("")
+    out(f"[偵測+遮蔽] handler_media.{'mask_pdf' if ext in PDF_EXTS else 'mask_image'} 耗時: {(t1-t0)*1000:.3f} ms")
     out("")
     out(f"解答共 {len(expected)} 筆: {expected}")
     out(f"實際偵測到 {len(detected)} 筆: {detected}")
@@ -394,7 +418,7 @@ def main_test():
         run_text_flow(article, answer, result_file)
 
     elif ext in PDF_EXTS or ext in IMAGE_EXTS:
-        ans_raw = input("請輸入對應的答案 json 檔名：")
+        ans_raw = input("請輸入對應的答案 json 檔名（裡面只需要 answer，不用 article）：")
         ans_path = _resolve_path(ans_raw)
         if ans_path is None:
             print(f"找不到答案檔：{ans_raw}")
