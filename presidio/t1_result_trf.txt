@@ -1,0 +1,47 @@
+==============================================================================
+剪貼簿敏感資訊防護 - 單篇文章 一次複製/貼上 測試報告（多版本評分）
+文章長度：702 字元　答案筆數：28
+==============================================================================
+
+[複製] 整篇偵測+遮蔽耗時: 1150.932 ms
+[貼上] 耗時: 201.659 ms | 剪貼簿內容維持不變(符合 on_paste 設計): OK
+[還原] 複製回來耗時: 976.624 ms | 完全還原成原始文章: OK
+[分類] 文章整體判斷: 一般文字
+
+解答共 28 筆: [['王志明', 'PERSON_NAME'], ['Chih-Ming Wang', 'PERSON_NAME'], ['D287654321', 'TW_ID'], ['1985年3月14日', 'DATE_OF_BIRTH'], ['高雄市苓雅區四維三路168號9樓', 'ADDRESS'], ['0912-345-678', 'PHONE_NUMBER'], ['chihming.wang@example.com', 'EMAIL'], ['李佳蓉醫師', 'PERSON_NAME'], ['Dr. Chia-Jung Lee', 'PERSON_NAME'], ['TWMD-0098234', 'LICENSE_NUMBER'], ['CGH-20260214-0071', 'MEDICAL_RECORD_NUMBER'], ['2026年2月14日至2026年2月20日', 'DATE'], ['POL-TW-4471982', 'INSURANCE_POLICY_NUMBER'], ['陳美玲', 'PERSON_NAME'], ['A223456789', 'TW_ID'], ['0933-222-111', 'PHONE_NUMBER'], ['台灣銀行苓雅分行', 'BANK_NAME'], ['013-001-0012345-6', 'BANK_ACCOUNT'], ['王志明', 'PERSON_NAME'], ['張婉如', 'PERSON_NAME'], ['EMP-05821', 'EMPLOYEE_ID'], ['0800-123-456', 'PHONE_NUMBER'], ['07-2211334', 'PHONE_NUMBER'], ['claims@example-insurance.com.tw', 'EMAIL'], ['CLM-2026-0034127', 'CASE_NUMBER'], ['2026年3月2日', 'DATE'], ['高雄市新興區中山一路85號3樓', 'ADDRESS'], ['203.74.12.88', 'IP_ADDRESS']]
+實際偵測到 29 筆: [('本案理賠申請人為王志明（英文名 Chih-Ming', 'PERSON'), ('D287654321', 'TW_ID'), ('1985年3月14日。申請人目前居住於「高雄市苓雅區四維三路168號9樓」，聯絡電話為 0912-345', 'DATE_TIME'), ('chihming.wang@example.com', 'EMAIL'), ('泰綜合醫院', 'ORGANIZATION'), ('李佳蓉', 'PERSON'), ('Chia-Jung', 'PERSON'), ('20260214', 'US_BANK_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE_TIME'), ('POL', 'ORGANIZATION'), ('王志明', 'PERSON'), ('陳美玲', 'PERSON'), ('A223456789', 'TW_ID'), ('0933-222-111', 'TW_PHONE'), ('開戶銀行', 'ORGANIZATION'), ('台灣銀行', 'ORGANIZATION'), ('苓雅', 'LOCATION'), ('013-001-0012345', 'BANK_ACCOUNT'), ('王志明', 'PERSON'), ('員為客服中心', 'ORGANIZATION'), ('婉如', 'PERSON'), ('0800-123-456', 'PHONE_NUMBER'), ('07-2211334', 'PHONE_NUMBER'), ('claims@example-insurance.com.tw', 'EMAIL'), ('CLM-2026', 'LICENSE_PLATE'), ('2026年3月2日', 'DATE_OF_BIRTH'), ('位於高雄市新興區中山一路85號3樓', 'ADDRESS'), ('IP', 'ORGANIZATION'), ('203.74.12.88', 'IP_ADDRESS')]
+
+------------------------------------------------------------------------------
+版本一：嚴格比對（起訖位置 + 類型完全一致）
+------------------------------------------------------------------------------
+命中(TP): 7  誤判(FP): 22  漏判(FN): 21
+誤判內容: [('本案理賠申請人為王志明（英文名 Chih-Ming', 'PERSON'), ('1985年3月14日。申請人目前居住於「高雄市苓雅區四維三路168號9樓」，聯絡電話為 0912-345', 'DATE_TIME'), ('泰綜合醫院', 'ORGANIZATION'), ('李佳蓉', 'PERSON'), ('Chia-Jung', 'PERSON'), ('20260214', 'US_BANK_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE_TIME'), ('POL', 'ORGANIZATION'), ('王志明', 'PERSON'), ('陳美玲', 'PERSON'), ('0933-222-111', 'TW_PHONE'), ('開戶銀行', 'ORGANIZATION'), ('台灣銀行', 'ORGANIZATION'), ('苓雅', 'LOCATION'), ('013-001-0012345', 'BANK_ACCOUNT'), ('王志明', 'PERSON'), ('員為客服中心', 'ORGANIZATION'), ('婉如', 'PERSON'), ('CLM-2026', 'LICENSE_PLATE'), ('2026年3月2日', 'DATE_OF_BIRTH'), ('位於高雄市新興區中山一路85號3樓', 'ADDRESS'), ('IP', 'ORGANIZATION')]
+漏判內容: [('王志明', 'PERSON_NAME'), ('Chih-Ming Wang', 'PERSON_NAME'), ('1985年3月14日', 'DATE_OF_BIRTH'), ('高雄市苓雅區四維三路168號9樓', 'ADDRESS'), ('0912-345-678', 'PHONE_NUMBER'), ('李佳蓉醫師', 'PERSON_NAME'), ('Dr. Chia-Jung Lee', 'PERSON_NAME'), ('TWMD-0098234', 'LICENSE_NUMBER'), ('CGH-20260214-0071', 'MEDICAL_RECORD_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE'), ('POL-TW-4471982', 'INSURANCE_POLICY_NUMBER'), ('陳美玲', 'PERSON_NAME'), ('0933-222-111', 'PHONE_NUMBER'), ('台灣銀行苓雅分行', 'BANK_NAME'), ('013-001-0012345-6', 'BANK_ACCOUNT'), ('王志明', 'PERSON_NAME'), ('張婉如', 'PERSON_NAME'), ('EMP-05821', 'EMPLOYEE_ID'), ('CLM-2026-0034127', 'CASE_NUMBER'), ('2026年3月2日', 'DATE'), ('高雄市新興區中山一路85號3樓', 'ADDRESS')]
+Precision: 24.14%
+Recall   : 25.00%
+F1 Score : 24.56%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本二：寬鬆比對（範圍有重疊即可，但類型需正確）
+------------------------------------------------------------------------------
+命中(TP): 9  誤判(FP): 20  漏判(FN): 19
+誤判內容: [('本案理賠申請人為王志明（英文名 Chih-Ming', 'PERSON'), ('1985年3月14日。申請人目前居住於「高雄市苓雅區四維三路168號9樓」，聯絡電話為 0912-345', 'DATE_TIME'), ('泰綜合醫院', 'ORGANIZATION'), ('李佳蓉', 'PERSON'), ('Chia-Jung', 'PERSON'), ('20260214', 'US_BANK_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE_TIME'), ('POL', 'ORGANIZATION'), ('王志明', 'PERSON'), ('陳美玲', 'PERSON'), ('0933-222-111', 'TW_PHONE'), ('開戶銀行', 'ORGANIZATION'), ('台灣銀行', 'ORGANIZATION'), ('苓雅', 'LOCATION'), ('王志明', 'PERSON'), ('員為客服中心', 'ORGANIZATION'), ('婉如', 'PERSON'), ('CLM-2026', 'LICENSE_PLATE'), ('2026年3月2日', 'DATE_OF_BIRTH'), ('IP', 'ORGANIZATION')]
+漏判內容: [('王志明', 'PERSON_NAME'), ('Chih-Ming Wang', 'PERSON_NAME'), ('1985年3月14日', 'DATE_OF_BIRTH'), ('高雄市苓雅區四維三路168號9樓', 'ADDRESS'), ('0912-345-678', 'PHONE_NUMBER'), ('李佳蓉醫師', 'PERSON_NAME'), ('Dr. Chia-Jung Lee', 'PERSON_NAME'), ('TWMD-0098234', 'LICENSE_NUMBER'), ('CGH-20260214-0071', 'MEDICAL_RECORD_NUMBER'), ('2026年2月14日至2026年2月20日', 'DATE'), ('POL-TW-4471982', 'INSURANCE_POLICY_NUMBER'), ('陳美玲', 'PERSON_NAME'), ('0933-222-111', 'PHONE_NUMBER'), ('台灣銀行苓雅分行', 'BANK_NAME'), ('王志明', 'PERSON_NAME'), ('張婉如', 'PERSON_NAME'), ('EMP-05821', 'EMPLOYEE_ID'), ('CLM-2026-0034127', 'CASE_NUMBER'), ('2026年3月2日', 'DATE')]
+Precision: 31.03%
+Recall   : 32.14%
+F1 Score : 31.58%
+結果: ✘ 有誤判或漏判
+
+------------------------------------------------------------------------------
+版本三：最寬鬆比對（範圍有重疊即算對，不論類型）
+------------------------------------------------------------------------------
+命中(TP): 23  誤判(FP): 6  漏判(FN): 5
+誤判內容: [('泰綜合醫院', 'ORGANIZATION'), ('開戶銀行', 'ORGANIZATION'), ('苓雅', 'LOCATION'), ('王志明', 'PERSON'), ('員為客服中心', 'ORGANIZATION'), ('IP', 'ORGANIZATION')]
+漏判內容: [('Chih-Ming Wang', 'PERSON_NAME'), ('高雄市苓雅區四維三路168號9樓', 'ADDRESS'), ('0912-345-678', 'PHONE_NUMBER'), ('TWMD-0098234', 'LICENSE_NUMBER'), ('EMP-05821', 'EMPLOYEE_ID')]
+Precision: 79.31%
+Recall   : 82.14%
+F1 Score : 80.70%
+結果: ✘ 有誤判或漏判
+
+==============================================================================

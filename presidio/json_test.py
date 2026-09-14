@@ -31,6 +31,12 @@ main.py / handler_text.py / handler_code.py / handler_media.py 位置：
 
 pdf/圖片分支會直接 import 專案本身的 handler_media.py，所以請確保該檔頭說明
 的套件(pillow / pytesseract / pymupdf + Tesseract-OCR 主程式)都已經裝好。
+
+【本版異動】
+所有原本沒有包 try/except、一旦出錯會讓整支程式直接崩潰、看不到清楚錯誤訊息
+的關鍵步驟（複製/貼上/還原、文字偵測、handler_media 呼叫、json 檔讀取），
+現在都會攔截例外、用 traceback.print_exc() 印出完整錯誤訊息並標明是哪個步驟
+失敗，再以 sys.exit(1) 結束，方便排查問題。
 """
 import os
 import sys
@@ -40,9 +46,6 @@ import types
 import tempfile
 import traceback
 import contextlib
-import sys
-for name in ["main", "handler_text", "handler_code", "handler_media"]:
-    sys.modules.pop(name, None)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))   # presidio 資料夾
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)                  # main.py / handler_*.py 所在的上一層資料夾
@@ -57,6 +60,13 @@ sys.path.insert(0, PARENT_DIR)
 def _silence_stdout():
     with open(os.devnull, "w", encoding="utf-8") as devnull, contextlib.redirect_stdout(devnull):
         yield
+
+
+def _fail(step_name, exc):
+    """統一的錯誤印出格式：標明是哪個步驟失敗 + 完整 traceback，然後結束程式。"""
+    print(f"\n[錯誤] 「{step_name}」發生例外，程式中止：")
+    traceback.print_exc()
+    sys.exit(1)
 
 
 def _resolve_path(filename):
@@ -124,7 +134,13 @@ def run_text_flow(article, answer, result_file):
         def __init__(self, pid): self.pid = pid
         def name(self): return "mock_process.exe"
 
-    _make_module("psutil", Process=_FakeProcess)
+    # 注意：psutil 這裡刻意「不」假造。main.py 對 psutil.Process(pid) 的呼叫本來就包在
+    # try/except 裡(找不到對應 pid 也只是印出「未知程式」，不影響偵測邏輯)，用真的 psutil
+    # 完全沒問題。反而如果像以前那樣用 types.ModuleType("psutil") 手動塞一個假模組進
+    # sys.modules，這個假模組沒有 __spec__，會讓 transformers 內部用
+    # importlib.util.find_spec("psutil") 檢查套件是否存在時直接丟 ValueError，
+    # 導致 presidio_analyzer 整條 import chain 炸掉，NLP 模型永遠載入失敗
+    # (被 handler_text.py 的 except Exception 吞掉，你完全看不到這個錯誤)。
     _make_module("pyperclip",
         copy=lambda text: FAKE_CLIPBOARD.set_text(text),
         paste=lambda: FAKE_CLIPBOARD.text)
@@ -145,9 +161,7 @@ def run_text_flow(article, answer, result_file):
     try:
         import main  # noqa: E402  原封不動
     except Exception:
-        print("匯入 main.py 失敗，請確認 main.py / handler_*.py 是否放在 presidio 的上一層資料夾。")
-        traceback.print_exc()
-        sys.exit(1)
+        _fail("匯入 main.py（請確認 main.py / handler_*.py 是否放在 presidio 的上一層資料夾）", None)
 
     # ---- 暖機：先觸發一次偵測，把 NER 模型(以及可能的 registry fallback)載入完成，
     #      這樣才不會把「模型第一次載入」的時間算進下面的正式計時。這裡故意不靜音，
@@ -157,13 +171,17 @@ def run_text_flow(article, answer, result_file):
         _warmup_text = "暖機用測試文字 test123 test@example.com"
         (main.handler_code if main.is_code_text(_warmup_text) else main.handler_text).detect(_warmup_text)
     except Exception:
+        print("[暖機] 發生錯誤（暖機失敗不會中止程式，但下面的計時可能包含模型載入時間）：")
         traceback.print_exc()
     print("[暖機] 完成，開始正式測試\n")
 
     def detect_with_offsets(text):
-        is_code = main.is_code_text(text)
-        matches = main.handler_code.detect(text) if is_code else main.handler_text.detect(text)
-        matches = main.merge_overlaps(matches)
+        try:
+            is_code = main.is_code_text(text)
+            matches = main.handler_code.detect(text) if is_code else main.handler_text.detect(text)
+            matches = main.merge_overlaps(matches)
+        except Exception:
+            _fail("文字/程式碼偵測 detect_with_offsets", None)
         detected = [(s, e, text[s:e], label) for s, e, label, score in matches]
         return is_code, detected
 
@@ -218,21 +236,30 @@ def run_text_flow(article, answer, result_file):
 
     FAKE_CLIPBOARD.set_text(article)
     t0 = time.perf_counter()
-    with _silence_stdout():
-        main.on_copy(mapping)
+    try:
+        with _silence_stdout():
+            main.on_copy(mapping)
+    except Exception:
+        _fail("複製(on_copy) - 整篇偵測+遮蔽", None)
     t1 = time.perf_counter()
     masked_text = FAKE_CLIPBOARD.text
 
     t2 = time.perf_counter()
-    with _silence_stdout():
-        main.on_paste(mapping)
+    try:
+        with _silence_stdout():
+            main.on_paste(mapping)
+    except Exception:
+        _fail("貼上(on_paste)", None)
     t3 = time.perf_counter()
     paste_unchanged = (FAKE_CLIPBOARD.text == masked_text)
 
     FAKE_CLIPBOARD.set_text(masked_text)
     t4 = time.perf_counter()
-    with _silence_stdout():
-        main.on_copy(mapping)
+    try:
+        with _silence_stdout():
+            main.on_copy(mapping)
+    except Exception:
+        _fail("還原(第二次 on_copy)", None)
     t5 = time.perf_counter()
     restored_text = FAKE_CLIPBOARD.text
     restored_ok = (restored_text == article)
@@ -277,8 +304,11 @@ def run_text_flow(article, answer, result_file):
     out("")
     out("=" * 78)
 
-    with open(result_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    try:
+        with open(result_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception:
+        _fail(f"寫入報告檔 {result_file}", None)
     print(f"報告已寫入：{result_file}")
 
 
@@ -323,10 +353,8 @@ def run_media_flow(path, answer, result_file):
     try:
         import handler_media
     except Exception:
-        print("匯入 handler_media.py 失敗，請確認它跟 main.py 放在同一個資料夾(presidio 的上一層)，"
-              "且已安裝 pillow / pytesseract / pymupdf 與 Tesseract-OCR 主程式。")
-        traceback.print_exc()
-        sys.exit(1)
+        _fail("匯入 handler_media.py（請確認它跟 main.py 放在同一個資料夾，"
+              "且已安裝 pillow / pytesseract / pymupdf 與 Tesseract-OCR 主程式）", None)
 
     ext = os.path.splitext(path)[1].lower()
     stem = os.path.splitext(os.path.basename(path))[0]
@@ -343,14 +371,18 @@ def run_media_flow(path, answer, result_file):
     try:
         handler_media.detect_matches("暖機用測試文字 test123 test@example.com")
     except Exception:
+        print("[暖機] 發生錯誤（暖機失敗不會中止程式，但下面的計時可能包含模型載入時間）：")
         traceback.print_exc()
     print("[暖機] 完成，開始正式測試")
 
     t0 = time.perf_counter()
-    if ext in PDF_EXTS:
-        entries = handler_media.mask_pdf(path, output_path, map_file)
-    else:
-        entries = handler_media.mask_image(path, output_path, map_file)
+    try:
+        if ext in PDF_EXTS:
+            entries = handler_media.mask_pdf(path, output_path, map_file)
+        else:
+            entries = handler_media.mask_image(path, output_path, map_file)
+    except Exception:
+        _fail(f"handler_media.{'mask_pdf' if ext in PDF_EXTS else 'mask_image'} 偵測+遮蔽", None)
     t1 = time.perf_counter()
 
     detected = [((e.get("value") or "").strip(), e["label"]) for e in entries]
@@ -396,8 +428,11 @@ def run_media_flow(path, answer, result_file):
     out(f"(遮蔽後檔案與對照表存在暫存資料夾，僅供檢查，不影響正式環境: {tmp_dir})")
     out("=" * 78)
 
-    with open(result_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    try:
+        with open(result_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception:
+        _fail(f"寫入報告檔 {result_file}", None)
     print(f"報告已寫入：{result_file}")
 
 
@@ -406,7 +441,7 @@ def main_test():
     raw = input("請輸入要測試的檔案名稱（json / pdf / 圖片檔，可直接打檔名或完整路徑）：")
     path = _resolve_path(raw)
     if path is None:
-        print(f"找不到檔案：{raw}")
+        print(f"[錯誤] 找不到檔案：{raw}")
         sys.exit(1)
 
     ext = os.path.splitext(path)[1].lower()
@@ -414,25 +449,31 @@ def main_test():
     result_file = os.path.join(SCRIPT_DIR, f"{stem}_result.txt")
 
     if ext == ".json":
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        article = data["article"]
-        answer = data["answer"]
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            article = data["article"]
+            answer = data["answer"]
+        except Exception:
+            _fail(f"讀取測試檔 {path}（請確認是合法 JSON，且含有 article / answer 欄位）", None)
         run_text_flow(article, answer, result_file)
 
     elif ext in PDF_EXTS or ext in IMAGE_EXTS:
         ans_raw = input("請輸入對應的答案 json 檔名（裡面只需要 answer，不用 article）：")
         ans_path = _resolve_path(ans_raw)
         if ans_path is None:
-            print(f"找不到答案檔：{ans_raw}")
+            print(f"[錯誤] 找不到答案檔：{ans_raw}")
             sys.exit(1)
-        with open(ans_path, encoding="utf-8") as f:
-            ans_data = json.load(f)
-        answer = ans_data["answer"]
+        try:
+            with open(ans_path, encoding="utf-8") as f:
+                ans_data = json.load(f)
+            answer = ans_data["answer"]
+        except Exception:
+            _fail(f"讀取答案檔 {ans_path}（請確認是合法 JSON，且含有 answer 欄位）", None)
         run_media_flow(path, answer, result_file)
 
     else:
-        print(f"不支援的檔案類型：{ext}")
+        print(f"[錯誤] 不支援的檔案類型：{ext}")
         sys.exit(1)
 
 

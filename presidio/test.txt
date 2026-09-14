@@ -1,2 +1,3 @@
 你好，我是張偉，我的信箱是 zhangwei@example.com，我在台積電上班。
 你好，我是張偉，我的信箱是 <EMAIL_6>，我在<ORGANIZATION_2><ORGANIZATION_1>上班。
+你好，我是<PERSON_1>，我的信箱是 <EMAIL_1>，我在台積電上班。

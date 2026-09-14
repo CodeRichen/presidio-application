@@ -9,35 +9,28 @@
        —— Presidio 內建的 SSN/IBAN/信用卡/加密貨幣錢包/IP 這類 pattern-based 辨識器
        幾乎都只註冊在 supported_language="en"，用 language="zh" 呼叫是完全不會觸發的，
        所以不管內容含不含中文都要跑這一段，不然這些內建規則等於白裝
-    3) 偵測到中文，另外疊加一次中文的 NER (PERSON/LOCATION/ORGANIZATION 等)
-       —— 這裡直接採用 Presidio 內建的 SpacyRecognizer 讀 zh_core_web_trf 的 NER 結果，
-       沒有另外掛 Hugging Face 模型，架構比之前用 CKIP 時單純很多，也不用裝 transformers
-第 2、3 層是同一個 AnalyzerEngine，實際呼叫的函式在 NLP_MODELS 這個註冊表裡。
-想整個換掉某一層（例如換回 CKIP、換別的中文模型、接雲端 API），寫一個
-func(text) -> [(start,end,label), ...]，把 NLP_MODELS["zh"] 或 NLP_MODELS["en"] 蓋掉即可，
-presidio_matches()/detect() 都不用動。
+    3) 偵測到中文，另外疊加一次中文的 NER —— 這裡**不透過 Presidio、不用 spaCy 中文模型斷詞**，
+       直接呼叫 Hugging Face 的中文 NER 模型 (見 ZH_NER_MODEL_NAME)，
+       省掉中文斷詞這一層，架構更單純、也不用另外下載 zh_core_web_sm/trf
+第 2、3 層實際呼叫的函式在 NLP_MODELS 這個註冊表裡，想整個換掉某一層（例如英文也想換掉、
+中文想換別的模型），寫一個 func(text) -> [(start,end,label,score), ...]，
+把 NLP_MODELS["zh"] 或 NLP_MODELS["en"] 蓋掉即可，presidio_matches()/detect() 都不用動。
 """
 import re
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Tuple
 
+# ---------- 英文：走 Presidio，含內建的規則式辨識器 (SSN/IBAN/信用卡/加密貨幣錢包/IP) + spaCy 英文 NER ----------
 try:
     from presidio_analyzer import AnalyzerEngine
     from presidio_analyzer.nlp_engine import NlpEngineProvider
 
-    # 中英文的 NLP 引擎 (spaCy)：中文改用 transformer 版模型，NER 判斷直接採用 spaCy 自己的結果
-    # 安裝: pip install spacy-transformers && python -m spacy download zh_core_web_trf
     nlp_configuration = {
         "nlp_engine_name": "spacy",
-        "models": [
-            {"lang_code": "zh", "model_name": "zh_core_web_trf"},
-            {"lang_code": "en", "model_name": "en_core_web_sm"},
-        ],
+        "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],  # 只需要英文，中文不用 spaCy
     }
     _nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
-    # 沒有自訂 registry，AnalyzerEngine 會自動幫 en/zh 各自載入 Presidio 內建的完整辨識器組合
-    # (規則式的 + SpacyRecognizer 讀 NER 結果的)，這是 Presidio 的預設行為，不用手動組 registry
-    _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["zh", "en"])
+    _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["en"])
 except Exception:
     _analyzer = None  # 完全沒裝 presidio 或模型沒下載時，自動退化成只用下面的正則規則
 
@@ -48,29 +41,62 @@ def contains_chinese(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
 
 
-def _presidio_call(text: str, lang: str) -> List[Tuple[int, int, str, float]]:
+def presidio_en(text: str) -> List[Tuple[int, int, str, float]]:
     if _analyzer is None:
         return []
     try:
         return [(r.start, r.end, r.entity_type, round(float(r.score), 2))
-                for r in _analyzer.analyze(text=text, language=lang)
+                for r in _analyzer.analyze(text=text, language="en")
                 if r.entity_type not in EXCLUDED_PRESIDIO_LABELS]
     except Exception:
-        return []  # 該語言模型沒裝/分析失敗都不影響正則規則的結果
+        return []  # 模型沒裝/分析失敗都不影響正則規則的結果
 
 
-def presidio_en(text: str) -> List[Tuple[int, int, str, float]]:
-    return _presidio_call(text, "en")
+# ---------- 中文：不經過 Presidio/spaCy，直接呼叫 Hugging Face 模型 ----------
+ZH_NER_MODEL_NAME = "uer/roberta-base-finetuned-cluener2020-chinese"  # 想換模型只改這個字串
+MIN_ZH_NER_SCORE = 0.7  # 信心分數門檻，低於這個值直接丟掉不採用；想放寬/收緊調這個數字即可
+
+# CLUENER2020 的標籤 -> 我們自己的實體名稱。book/game/movie/scene 跟隱私/敏感資訊無關
+# (書名/遊戲/電影/場景)，故意不對應、不遮蔽；如果換了別的模型，標籤名稱不一樣，改這裡就好。
+_ZH_LABEL_MAP = {
+    "name": "PERSON",
+    "address": "ADDRESS",
+    "company": "ORGANIZATION",
+    "government": "ORGANIZATION",
+    "organization": "ORGANIZATION",
+    "position": "POSITION",
+}
+_zh_ner_pipeline = None
+try:
+    from transformers import pipeline
+    print(f"正在載入中文 NER 模型 ({ZH_NER_MODEL_NAME})...")
+    _zh_ner_pipeline = pipeline("ner", model=ZH_NER_MODEL_NAME, aggregation_strategy="simple")
+except Exception as e:
+    print(f"[警告] 中文 NER 模型載入失敗，中文將只用正則規則：{e}")
 
 
-def presidio_zh(text: str) -> List[Tuple[int, int, str, float]]:
-    return _presidio_call(text, "zh")
+def zh_ner(text: str) -> List[Tuple[int, int, str, float]]:
+    """不經過 Presidio/spaCy，直接呼叫上面載入的中文 NER pipeline。
+    如果換模型後偵測不到東西，先印 _zh_ner_pipeline(text) 看 entity_group 實際字串長怎樣，
+    再對照調整 _ZH_LABEL_MAP，很可能是標籤名稱對不上。"""
+    if _zh_ner_pipeline is None:
+        return []
+    try:
+        matches = []
+        for item in _zh_ner_pipeline(text):
+            label = _ZH_LABEL_MAP.get(item["entity_group"])
+            score = float(item["score"])
+            if label and score >= MIN_ZH_NER_SCORE:
+                matches.append((item["start"], item["end"], label, round(score, 2)))
+        return matches
+    except Exception:
+        return []  # 分析失敗不影響正則規則的結果
 
 
 # 語言 -> NLP 模型函式 的註冊表：想加/換某個語言用的模型，往這裡改一行就好
 NLP_MODELS = {
     "en": presidio_en,
-    "zh": presidio_zh,
+    "zh": zh_ner,
 }
 
 
@@ -192,7 +218,7 @@ def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str, float]]:
 def presidio_matches(text: str) -> List[Tuple[int, int, str, float]]:
     """先永遠跑一次英文那組 (Presidio 內建的規則式辨識器如 SSN/IBAN/信用卡/加密貨幣錢包/IP
     幾乎都只註冊在 language="en" 底下，不管文字裡有沒有中文都要跑，不然這些規則等於形同虛設)，
-    偵測到中文再疊加一次中文的 NER (zh_core_web_trf) 判斷人名/地名/機構名"""
+    偵測到中文再疊加一次 CKIP 判斷人名/地名/機構名 (不經過 Presidio/spaCy)"""
     matches = NLP_MODELS["en"](text)
     if contains_chinese(text):
         matches += NLP_MODELS["zh"](text)
