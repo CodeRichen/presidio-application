@@ -9,88 +9,37 @@
        —— Presidio 內建的 SSN/IBAN/信用卡/加密貨幣錢包/IP 這類 pattern-based 辨識器
        幾乎都只註冊在 supported_language="en"，用 language="zh" 呼叫是完全不會觸發的，
        所以不管內容含不含中文都要跑這一段，不然這些內建規則等於白裝
-    3) 偵測到中文，另外疊加一次中文的 CKIP NER (只判斷 PERSON/LOCATION/ORGANIZATION)
-       (zh_core_web_sm 只拿來給 Presidio 做斷詞，NER 結果刻意不採用，避免跟 CKIP 重複判斷、互相打架；
-        zh_core_web_sm 本身中文 NER 品質也比 CKIP 弱，兩個一起跑只會增加雜訊)
+    3) 偵測到中文，另外疊加一次中文的 NER (PERSON/LOCATION/ORGANIZATION 等)
+       —— 這裡直接採用 Presidio 內建的 SpacyRecognizer 讀 zh_core_web_trf 的 NER 結果，
+       沒有另外掛 Hugging Face 模型，架構比之前用 CKIP 時單純很多，也不用裝 transformers
 第 2、3 層是同一個 AnalyzerEngine，實際呼叫的函式在 NLP_MODELS 這個註冊表裡。
-想整個換掉某一層（例如換別的中文 NER 模型、接雲端 API），寫一個 func(text) -> [(start,end,label), ...]，
-把 NLP_MODELS["zh"] 或 NLP_MODELS["en"] 蓋掉即可，presidio_matches()/detect() 都不用動。
+想整個換掉某一層（例如換回 CKIP、換別的中文模型、接雲端 API），寫一個
+func(text) -> [(start,end,label), ...]，把 NLP_MODELS["zh"] 或 NLP_MODELS["en"] 蓋掉即可，
+presidio_matches()/detect() 都不用動。
 """
 import re
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Tuple
-import os
-os.environ["HF_HUB_OFFLINE"] = "1"          # huggingface_hub 完全離線
-os.environ["TRANSFORMERS_OFFLINE"] = "1"    # transformers 也跟著離線
-os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # 順手關掉遙測回報
-
-MIN_ZH_NER_SCORE = 0.7  # CKIP 判斷的信心分數門檻，低於這個值直接丟掉不採用；想放寬/收緊調這個數字即可
 
 try:
-    from presidio_analyzer import AnalyzerEngine, EntityRecognizer, RecognizerResult, RecognizerRegistry
+    from presidio_analyzer import AnalyzerEngine
     from presidio_analyzer.nlp_engine import NlpEngineProvider
-    from transformers import pipeline
 
-    # ---- 1. 中/英文的基礎 NLP 引擎 (spaCy)：中文模型只拿來斷詞，NER 判斷交給下面的 CKIP 模型 ----
+    # 中英文的 NLP 引擎 (spaCy)：中文改用 transformer 版模型，NER 判斷直接採用 spaCy 自己的結果
+    # 安裝: pip install spacy-transformers && python -m spacy download zh_core_web_trf
     nlp_configuration = {
         "nlp_engine_name": "spacy",
         "models": [
-            {"lang_code": "zh", "model_name": "zh_core_web_sm"},  
-            {"lang_code": "en", "model_name": "en_core_web_trf"}, # 這邊從sm改掉會有幫助嗎?
+            {"lang_code": "zh", "model_name": "zh_core_web_trf"},
+            {"lang_code": "en", "model_name": "en_core_web_sm"},
         ],
     }
     _nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
-
-    # ---- 2. 自訂中文 NER 辨識器：只用 Hugging Face 的 ckiplab/bert-base-chinese-ner 判斷人名/地名/機構名 ----
-    class CustomHfChineseRecognizer(EntityRecognizer):
-        def __init__(self):
-            super().__init__(supported_entities=["PERSON", "LOCATION", "ORGANIZATION"],
-                              supported_language="zh")
-            # print("正在載入 Hugging Face 中文 NER 模型 (ckiplab/bert-base-chinese-ner)...")
-            self.ner_pipeline = pipeline("ner", model="ckiplab/bert-base-chinese-ner",
-                                          aggregation_strategy="simple")
-
-        def load(self):
-            pass
-
-        def analyze(self, text, entities, nlp_artifacts=None):
-            label_map = {"PER": "PERSON", "LOC": "LOCATION", "ORG": "ORGANIZATION"}
-            results = []
-            for item in self.ner_pipeline(text):
-                entity_type = label_map.get(item["entity_group"])
-                score = float(item["score"])
-                if entity_type and score >= MIN_ZH_NER_SCORE and (not entities or entity_type in entities):
-                    results.append(RecognizerResult(entity_type=entity_type, start=item["start"],
-                                                      end=item["end"], score=score))
-            return results
-
-    # ---- 3. 手動組 registry：英文照 Presidio 內建規則正常載入；中文只掛 CKIP 這一個辨識器，
-    #          不讓 Presidio 自動載入 zh_core_web_sm 內建的 NER 辨識器，避免跟 CKIP 重複判斷 ----
-    _chinese_recognizer = None
-    try:
-        _chinese_recognizer = CustomHfChineseRecognizer()  # 只建立一次，不管走哪個分支都重複使用，避免重複載入模型
-    except Exception as e:
-        print(f"[警告] 中文 NER 模型載入失敗，中文只會用英文那組規則式辨識器：{e}")
-
-    try:
-        # supported_languages 一定要跟下面 AnalyzerEngine 給的一致，不然 Presidio 會直接丟例外
-        _registry = RecognizerRegistry(supported_languages=["en", "zh"])
-        _registry.load_predefined_recognizers(languages=["en"])
-        if _chinese_recognizer:
-            _registry.add_recognizer(_chinese_recognizer)
-        _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, registry=_registry, supported_languages=["zh", "en"])
-        # print("Presidio AnalyzerEngine 建立成功，已掛載中文 CKIP NER 模型")
-    except Exception as e:
-        # 萬一 Presidio 版本的 registry API 不一樣，退回舊做法(中文會跟 spaCy 內建 NER 重複判斷，但至少能跑)
-        print(f"[警告] 自訂 registry 建立失敗，改用預設設定：{e}")
-        _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["zh", "en"])
-        if _chinese_recognizer:
-            try:
-                _analyzer.registry.add_recognizer(_chinese_recognizer)
-            except Exception:
-                pass
+    # 沒有自訂 registry，AnalyzerEngine 會自動幫 en/zh 各自載入 Presidio 內建的完整辨識器組合
+    # (規則式的 + SpacyRecognizer 讀 NER 結果的)，這是 Presidio 的預設行為，不用手動組 registry
+    _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["zh", "en"])
 except Exception:
-    _analyzer = None  # 完全沒裝 presidio/transformers 時，自動退化成只用下面的正則規則
+    _analyzer = None  # 完全沒裝 presidio 或模型沒下載時，自動退化成只用下面的正則規則
 
 EXCLUDED_PRESIDIO_LABELS = {"US_DRIVER_LICENSE"}  # 不想遮蔽的 Presidio 類型，往這個 set 加
 
@@ -103,9 +52,6 @@ def _presidio_call(text: str, lang: str) -> List[Tuple[int, int, str, float]]:
     if _analyzer is None:
         return []
     try:
-        # print("Presidio分析結果:")
-        # for r in _analyzer.analyze(text=text, language=lang):
-            # print(r.start, r.end, r.entity_type, round(float(r.score), 2))
         return [(r.start, r.end, r.entity_type, round(float(r.score), 2))
                 for r in _analyzer.analyze(text=text, language=lang)
                 if r.entity_type not in EXCLUDED_PRESIDIO_LABELS]
@@ -246,7 +192,7 @@ def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str, float]]:
 def presidio_matches(text: str) -> List[Tuple[int, int, str, float]]:
     """先永遠跑一次英文那組 (Presidio 內建的規則式辨識器如 SSN/IBAN/信用卡/加密貨幣錢包/IP
     幾乎都只註冊在 language="en" 底下，不管文字裡有沒有中文都要跑，不然這些規則等於形同虛設)，
-    偵測到中文再疊加一次中文的 CKIP NER 判斷人名/地名/機構名"""
+    偵測到中文再疊加一次中文的 NER (zh_core_web_trf) 判斷人名/地名/機構名"""
     matches = NLP_MODELS["en"](text)
     if contains_chinese(text):
         matches += NLP_MODELS["zh"](text)

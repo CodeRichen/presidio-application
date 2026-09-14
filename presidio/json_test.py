@@ -40,6 +40,9 @@ import types
 import tempfile
 import traceback
 import contextlib
+import sys
+for name in ["main", "handler_text", "handler_code", "handler_media"]:
+    sys.modules.pop(name, None)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))   # presidio 資料夾
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)                  # main.py / handler_*.py 所在的上一層資料夾

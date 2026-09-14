@@ -25,7 +25,7 @@ import json
 import tempfile
 from typing import List, Tuple
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps, ImageFilter
 import pytesseract
 
 try:
@@ -44,6 +44,10 @@ OCR_LANG = "chi_tra+eng"      # Tesseract 語言包，依需求調整，例如�
 MASK_COLOR = (0, 0, 0)        # 遮蔽色塊顏色
 MASK_PADDING = 2              # 遮蔽框比偵測到的文字框多留幾個 px，避免邊緣殘留
 DEFAULT_MAP_FILE = "./presidio/media_deid_map.json"
+
+MIN_OCR_WIDTH = 1600           # OCR 前處理：圖片寬度小於這個值就放大，小字體/低解析度圖片辨識率會差很多
+ADAPTIVE_THRESH_BLOCK = 31     # 有裝 opencv 時，adaptive threshold 的區塊大小 (需為奇數)
+ADAPTIVE_THRESH_C = 15         # 同上，threshold 的常數項，光線不均的照片可以調這兩個值
 
 # 遮蔽/還原後的檔案要存在哪裡，改這個變數就好：
 #   None          -> 系統暫存資料夾 (預設；不會弄髒原始檔案所在的資料夾，反正結果都會放回剪貼簿)
@@ -102,6 +106,43 @@ def detect_matches(text: str) -> List[Tuple[int, int, str, float]]:
     return _merge_overlaps(matches)
 
 
+# ========== OCR 前處理 ==========
+def preprocess_for_ocr(img: Image.Image) -> Tuple[Image.Image, float]:
+    """OCR 前的影像前處理，提升 Tesseract 辨識率：
+        1) 轉灰階（顏色對文字辨識沒幫助，反而增加雜訊）
+        2) 太小的圖放大到至少 MIN_OCR_WIDTH 寬（小字體/低解析度截圖是常見的辨識率殺手）
+        3) 去雜訊 + 二值化：
+           - 有裝 opencv-python(cv2) 的話用 adaptive threshold + 去雜訊，效果較好，
+             尤其是手機拍照那種光線不均勻的圖
+           - 沒裝的話退回只用 Pillow 做全域對比拉伸 + 銳化 + 固定閾值二值化，一樣有幫助，只是效果較普通
+    回傳 (前處理後的圖片, scale)，scale 是實際放大的倍率（沒放大就是 1.0）。
+    呼叫端要記得：偵測到的座標是在「前處理後的圖片」上，貼回原圖/PDF 前要除以這個 scale 換算回去。
+    """
+    gray = ImageOps.grayscale(img)
+
+    scale = max(1.0, MIN_OCR_WIDTH / gray.width)
+    if scale > 1.0:
+        gray = gray.resize((round(gray.width * scale), round(gray.height * scale)), Image.LANCZOS)
+
+    try:
+        import cv2
+        import numpy as np
+        arr = np.array(gray)
+        arr = cv2.fastNlMeansDenoising(arr, h=10)
+        arr = cv2.adaptiveThreshold(
+            arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,
+            ADAPTIVE_THRESH_BLOCK, ADAPTIVE_THRESH_C,
+        )
+        processed = Image.fromarray(arr)
+    except ImportError:
+        # 沒裝 opencv 也能跑，只是效果比不上 adaptive threshold：
+        # 自動拉伸對比 -> 銳化邊緣 -> 固定閾值轉黑白
+        processed = ImageOps.autocontrast(gray).filter(ImageFilter.SHARPEN)
+        processed = processed.point(lambda p: 255 if p > 180 else 0)
+
+    return processed, scale
+
+
 # ========== OCR 共用工具 ==========
 def ocr_words(pil_image: Image.Image) -> List[dict]:
     data = pytesseract.image_to_data(pil_image, lang=OCR_LANG, output_type=pytesseract.Output.DICT)
@@ -130,8 +171,10 @@ def _group_lines(words: List[dict]) -> List[List[dict]]:
     return [sorted(v, key=lambda w: w["word_num"]) for v in lines.values()]
 
 
-def find_sensitive_boxes_in_words(words: List[dict]):
-    """回傳 [(x0, y0, x1, y1, label, matched_text, score), ...]（像素座標）"""
+def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
+    """回傳 [(x0, y0, x1, y1, label, matched_text, score), ...]（像素座標）
+    scale：如果 words 是從 preprocess_for_ocr() 放大過的圖片跑 OCR 得到的，這裡要傳對應的放大倍率，
+    才能把座標除回原圖尺寸；呼叫端不用另外處理，這裡回傳的座標已經是「原圖座標」。"""
     boxes = []
     for line_words in _group_lines(words):
         line_text, offsets = "", []
@@ -146,6 +189,8 @@ def find_sensitive_boxes_in_words(words: List[dict]):
                 continue
             x0 = min(w["left"] for w in hit_words); y0 = min(w["top"] for w in hit_words)
             x1 = max(w["left"] + w["width"] for w in hit_words); y1 = max(w["top"] + w["height"] for w in hit_words)
+            if scale != 1.0:
+                x0, y0, x1, y1 = x0 / scale, y0 / scale, x1 / scale, y1 / scale
             boxes.append((x0, y0, x1, y1, label, line_text[start:end], score))
     return boxes
 
@@ -182,7 +227,8 @@ def _crop_to_png_b64(pil_image: Image.Image, box) -> str:
 
 def mask_image(input_path: str, output_path: str, map_file: str = DEFAULT_MAP_FILE):
     img = Image.open(input_path).convert("RGB")
-    boxes = find_sensitive_boxes_in_words(ocr_words(img))
+    processed, scale = preprocess_for_ocr(img)
+    boxes = find_sensitive_boxes_in_words(ocr_words(processed), scale=scale)
 
     entries, counters = [], {}
     draw = ImageDraw.Draw(img)
@@ -255,7 +301,10 @@ def _mask_pdf_scanned_page(page, entries, counters, zoom: float = 2.0):
     matrix = fitz.Matrix(zoom, zoom)
     pix = page.get_pixmap(matrix=matrix, annots=False)
     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-    boxes = find_sensitive_boxes_in_words(ocr_words(img))
+    processed, ocr_scale = preprocess_for_ocr(img)
+    # find_sensitive_boxes_in_words 已經把座標除回 ocr_scale，回傳的是「img」(zoom 轉出來的原圖) 座標系，
+    # 所以下面把座標除以 zoom 轉回 PDF 座標時，跟原本沒有前處理的邏輯完全一樣，不用再額外處理 ocr_scale
+    boxes = find_sensitive_boxes_in_words(ocr_words(processed), scale=ocr_scale)
 
     for x0, y0, x1, y1, label, value, score in boxes:
         px0, py0, px1, py1 = x0 - MASK_PADDING, y0 - MASK_PADDING, x1 + MASK_PADDING, y1 + MASK_PADDING

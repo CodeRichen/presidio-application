@@ -63,6 +63,11 @@ TEXT_CLASSIFY_MODE = "heuristic"
 
 TAG_RE = re.compile(r"<([A-Z_]+)_(\d+)>")
 
+# Ctrl+Alt+C 產生的「覆蓋結果」暫存在這裡，不會寫進系統剪貼簿；
+# 只有按 HOTKEY_PASTE 才會短暫寫入剪貼簿貼上，貼完立刻還原成 original，避免覆蓋結果留在剪貼簿上被其他程式讀到。
+# kind: "text" | "files" | None，content 是覆蓋結果本身，original 是複製當下剪貼簿原本的內容。
+_override = {"kind": None, "content": None, "original": None}
+
 
 def is_code_text(text: str) -> bool:
     return CLASSIFY_MODELS[TEXT_CLASSIFY_MODE](text)
@@ -166,6 +171,20 @@ def get_active_window_info():
     return title, proc_name
 
 
+def _paste_with_retry(retries: int = 5, delay: float = 0.05) -> str:
+    """剪貼簿常常會被別的程式(甚至是我們自己剛模擬完的 Ctrl+C)短暫佔用，
+    這時 OpenClipboard 會直接丟例外；與其讓整個 callback 炸掉，重試個幾次通常就過了。"""
+    last_err = None
+    for _ in range(retries):
+        try:
+            return pyperclip.paste()
+        except pyperclip.PyperclipWindowsException as e:
+            last_err = e
+            time.sleep(delay)
+    print(f"[警告] 讀取剪貼簿失敗，已重試 {retries} 次仍失敗：{last_err}")
+    return ""
+
+
 def get_clipboard_content():
     copied_files = []
     try:
@@ -183,7 +202,7 @@ def get_clipboard_content():
             pass
     if copied_files:
         return "FILES", copied_files
-    return "TEXT", pyperclip.paste()
+    return "TEXT", _paste_with_retry()
 
 
 def send_key_combination(vk_code):
@@ -209,15 +228,18 @@ def copy_files_to_clipboard(paths):
 
 
 # ---------- 分類 + 分派 ----------
-def dispatch_files(paths, mapping):
+def dispatch_files(paths, mapping) -> list:
+    """回傳實際產生的去識別化檔案路徑清單(順序對應輸入的 paths，跳過的/沒偵測到內容的不會出現)。
+    不會動剪貼簿——剪貼簿只在按下 HOTKEY_PASTE 貼上覆蓋結果時才會被短暫寫入。"""
+    produced = []
     for path in paths:
         ext = os.path.splitext(path)[1].lower()
 
         if ext in MEDIA_EXTENSIONS:
             print(f"[分類] {path} -> 圖片/PDF，交給 handler_media 處理 (OCR + 正則 + Presidio)")
             out_path = handler_media.mask_file(path)
-            copy_files_to_clipboard([out_path])
-            print(f"[完成] 已產生去識別化檔案並放回剪貼簿：{out_path}")
+            produced.append(out_path)
+            print(f"[完成] 已產生去識別化檔案：{out_path}")
 
         elif ext in CODE_EXTENSIONS or ext in TEXT_FILE_EXTENSIONS:
             kind = "程式碼檔案" if ext in CODE_EXTENSIONS else "純文字檔案"
@@ -234,16 +256,19 @@ def dispatch_files(paths, mapping):
                 out_path = f"{os.path.splitext(path)[0]}_masked{ext}"
                 with open(out_path, "w", encoding="utf-8") as f:
                     f.write(masked)
-                copy_files_to_clipboard([out_path])
-                print(f"[完成] 已產生去識別化檔案並放回剪貼簿：{out_path}")
+                produced.append(out_path)
+                print(f"[完成] 已產生去識別化檔案：{out_path}")
             else:
-                print("[結果] 未偵測到需要遮蔽的內容，剪貼簿維持原檔案")
+                print("[結果] 未偵測到需要遮蔽的內容")
 
         else:
             print(f"[跳過] {path}：副檔名不在 CODE_EXTENSIONS / MEDIA_EXTENSIONS / TEXT_FILE_EXTENSIONS 設定內")
 
+    return produced
+
 
 def on_copy(mapping):
+    global _override
     print("\n" + "=" * 50)
     print("【偵測到複製快速鍵】")
     send_key_combination(ord('C'))
@@ -255,7 +280,13 @@ def on_copy(mapping):
 
     if content_type == "FILES":
         print(f"複製類型: 檔案 (共 {len(content)} 個)")
-        dispatch_files(content, mapping)
+        out_paths = dispatch_files(content, mapping)
+        if out_paths:
+            _override = {"kind": "files", "content": out_paths, "original": content}
+            print(f"[就緒] 覆蓋結果已產生 (共 {len(out_paths)} 個檔案)，按 {HOTKEY_PASTE} 才會貼上；剪貼簿本身不受影響")
+        else:
+            _override = {"kind": None, "content": None, "original": None}
+            print("[結果] 未偵測到需要遮蔽的內容")
     else:
         if TAG_RE.search(content):
             print("[分類] 內容含標籤 -> 還原模式")
@@ -263,19 +294,36 @@ def on_copy(mapping):
         else:
             result = anonymize_text(content, mapping)
         if result and result != content:
-            pyperclip.copy(result)
-            print("[完成] 已更新剪貼簿內容")
+            _override = {"kind": "text", "content": result, "original": content}
+            print(f"[就緒] 覆蓋結果已產生，按 {HOTKEY_PASTE} 才會貼上；剪貼簿本身不受影響")
         else:
-            print("[結果] 未偵測到需要遮蔽的內容，剪貼簿維持原樣")
+            _override = {"kind": None, "content": None, "original": None}
+            print("[結果] 未偵測到需要遮蔽的內容")
     print("=" * 50)
 
 
 def on_paste(mapping):
     print("\n" + "=" * 50)
-    print("【偵測到貼上快速鍵】直接貼上剪貼簿目前的內容")
+    print("【偵測到貼上快速鍵】")
     title, proc = get_active_window_info()
-    send_key_combination(ord('V'))
-    print(f"目標程式: {proc} | 視窗標題: {title}")
+
+    if _override["kind"] == "text":
+        pyperclip.copy(_override["content"])
+        time.sleep(0.05)
+        send_key_combination(ord('V'))
+        time.sleep(0.05)
+        pyperclip.copy(_override["original"])  # 貼完立刻還原剪貼簿，覆蓋結果不會留在系統剪貼簿上
+        print(f"[完成] 已貼上覆蓋結果(文字)給 {proc} | {title}，剪貼簿已還原為原始內容")
+    elif _override["kind"] == "files":
+        copy_files_to_clipboard(_override["content"])
+        time.sleep(0.05)
+        send_key_combination(ord('V'))
+        time.sleep(0.05)
+        copy_files_to_clipboard(_override["original"])  # 同上，貼完馬上還原
+        print(f"[完成] 已貼上覆蓋結果(檔案)給 {proc} | {title}，剪貼簿已還原為原始內容")
+    else:
+        print(f"[提示] 目前沒有覆蓋結果，直接貼上剪貼簿目前內容給 {proc} | {title}")
+        send_key_combination(ord('V'))
     print("=" * 50)
 
 
@@ -298,8 +346,8 @@ def _guarded(func):
 def start_listener():
     mapping = load_map()
     print("【監聽啟動】")
-    print(f"  - {HOTKEY_COPY} : 有標籤就還原、沒標籤就自動遮蔽")
-    print(f"  - {HOTKEY_PASTE} : 單純貼上剪貼簿目前的內容")
+    print(f"  - {HOTKEY_COPY} : 有標籤就還原、沒標籤就自動遮蔽（只會產生覆蓋結果，不會動剪貼簿）")
+    print(f"  - {HOTKEY_PASTE} : 貼上覆蓋結果(文字/檔案)，貼完立刻把剪貼簿還原成原始內容；沒有覆蓋結果就單純貼上目前剪貼簿內容")
     print("  - Ctrl+V : 系統原生貼上，完全不受這支程式影響")
     print("在終端機視窗按 Ctrl+C 可停止腳本\n")
 
