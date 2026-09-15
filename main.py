@@ -44,7 +44,8 @@ MAP_FILE = "./presidio/real/clipboard_map.txt"
 
 
 def heuristic_is_code(text: str) -> bool:
-    """快速判斷一段文字像不像程式碼：命中越多程式碼特徵，越可能是程式碼。門檻(>=3)可自行調整"""
+    """快速判斷一段文字像不像程式碼：命中越多程式碼特徵，越可能是程式碼。門檻(>=3)可自行調整。
+    只用在「直接複製一段文字」(沒有檔名可判斷) 的情況；檔案有副檔名時一律用副檔名判斷，不會呼叫這裡。"""
     signals = re.findall(
         r"[{};]|=>|\bdef \b|\bclass \b|\bimport \b|#include|\bfunction\b|\bconst \b|\bvar \b|\breturn \b",
         text,
@@ -54,6 +55,7 @@ def heuristic_is_code(text: str) -> bool:
 
 # 分類模型註冊表：想加自己的判斷方式(例如真的呼叫一個 LLM 或雲端 API)，
 # 寫一個 func(text) -> bool，往這裡加一行，再把 TEXT_CLASSIFY_MODE 改成該名稱即可，其他都不用動。
+# 注意：這個註冊表只影響「沒有副檔名可判斷」的原始剪貼簿文字，檔案一律用 CODE_EXTENSIONS/TEXT_FILE_EXTENSIONS 判斷。
 CLASSIFY_MODELS = {
     "heuristic": heuristic_is_code,
     # "qwen": your_qwen_is_code_function,
@@ -108,24 +110,69 @@ def cleanup_map_files():
             print(f"[警告] 刪除 {f} 失敗：{e}")
 
 
-def merge_overlaps(matches):
-    """matches 是 (start, end, label, score) 的 4 元素 tuple，重疊時只留較長的那個"""
-    matches = sorted(matches, key=lambda m: (m[0], -(m[1] - m[0])))
-    merged, last_end = [], -1
-    for m in matches:
-        start, end = m[0], m[1]
-        if start >= last_end:
-            merged.append(m)
-            last_end = end
-    return merged
+def _priority_tier(source: str, prefer_zh: bool) -> int:
+    """重疊時決定「誰贏」的優先序，數字越小越優先：
+        0 -> 正則規則 (source == "regex")，不管中英文一律最優先
+        1 -> 跟整段文字語言「吻合」的模型：文字含中文時是中文 NER (zh)，否則是 Presidio 英文模型 (en)
+        2 -> 跟整段文字語言「不吻合」的模型 (次要，通常是誤判機率較高的那個)
+    prefer_zh 是「這段文字含不含中文」的判斷結果 (handler_text.contains_chinese)，
+    不是逐筆判斷每個候選字串本身的語言——是用整段文字的語言去決定 en/zh 兩個模型誰優先。"""
+    if source == "regex":
+        return 0
+    if source == "zh":
+        return 1 if prefer_zh else 2
+    if source == "en":
+        return 2 if prefer_zh else 1
+    return 3  # 保底：理論上不會出現 "regex"/"en"/"zh" 以外的 source
 
 
-def anonymize_text(text, mapping):
-    is_code = is_code_text(text)
+def merge_overlaps(matches, prefer_zh: bool):
+    """matches 是 (start, end, label, score, source) 的 5 元素 tuple。
+
+    重疊處理優先序 (見 _priority_tier)：
+        1) 正則規則優先，不管中英文
+        2) 其餘模型類的結果，依整段文字是否含中文決定：
+           文字含中文 -> 中文 NER 模型優先於 Presidio 英文模型；不含中文 -> 反過來
+        3) 同一優先序內，範圍(end-start)較長的優先；再相同則信心分數較高的優先
+           (正則規則沒有分數，比較時當成 0，但因為正則規則的優先序本來就最高，
+           這條 tie-break 只會在「兩個正則規則互相重疊」時才有意義)
+
+    只要跟「已經保留」的結果重疊，優先序較低的候選就會被淘汰；不管保留或淘汰，
+    每一筆的信心分數都會印出來（regex 沒有分數會印 "None(規則比對)"），方便確認
+    究竟是哪個規則/模型的結果最後勝出、哪些候選是因為跟別人重疊才被拿掉的。"""
+    ordered = sorted(
+        matches,
+        key=lambda m: (
+            _priority_tier(m[4], prefer_zh),
+            -(m[1] - m[0]),
+            -(m[3] if m[3] is not None else 0),
+        ),
+    )
+    kept = []
+    print(f"  重疊處理優先序：規則 > {'中文' if prefer_zh else '英文'}模型 > {'英文' if prefer_zh else '中文'}模型")
+    for start, end, label, score, source in ordered:
+        overlapped = any(not (end <= k[0] or start >= k[1]) for k in kept)
+        status = "淘汰(重疊)" if overlapped else "保留"
+        score_info = f"{score}" if score is not None else "None(規則比對)"
+        print(f"    [{status}] {label:<22} [{start:>4}:{end:<4}] 來源={source:<5} 信心分數={score_info}")
+        if not overlapped:
+            kept.append((start, end, label, score, source))
+    return sorted(kept, key=lambda m: m[0])
+
+
+def anonymize_text(text, mapping, is_code=None):
+    """is_code=None 時 (原始剪貼簿文字、沒有副檔名可判斷) 才會用 is_code_text() 猜；
+    檔案處理 (dispatch_files) 一律明確傳入 is_code，不會走猜測那條路。"""
+    if is_code is None:
+        is_code = is_code_text(text)
     matches = handler_code.detect(text) if is_code else handler_text.detect(text)
     if not matches:
         return None
-    matches = merge_overlaps(matches)
+
+    # 用整段文字判斷中英文，決定重疊時中/英模型誰優先；跟每筆候選各自的 source 一起交給 merge_overlaps
+    prefer_zh = handler_text.contains_chinese(text)
+    print(f"[偵測] 共 {len(matches)} 筆候選 (含正則規則與模型)：")
+    matches = merge_overlaps(matches, prefer_zh)
 
     reverse = {v: k for k, v in mapping.items()}
     counters = {}
@@ -136,7 +183,7 @@ def anonymize_text(text, mapping):
             counters[t] = max(counters.get(t, 0), int(i))
 
     out = text
-    for start, end, etype, score in sorted(matches, key=lambda m: m[0], reverse=True):
+    for start, end, etype, score, source in sorted(matches, key=lambda m: m[0], reverse=True):
         val = text[start:end]
         tag = reverse.get(val)
         if not tag:
@@ -146,7 +193,7 @@ def anonymize_text(text, mapping):
             reverse[val] = tag
         kind = "程式碼" if is_code else "一般文字"
         score_info = f", 信心分數 {score}" if score is not None else ""
-        print(f"[遮蔽] {val!r} -> {tag}  (理由: {etype}, 判斷為{kind}{score_info})")
+        print(f"[遮蔽] {val!r} -> {tag}  (理由: {etype}, 判斷為{kind}{score_info}, 來源={source})")
         out = out[:start] + tag + out[end:]
 
     save_map(mapping)
@@ -242,8 +289,9 @@ def dispatch_files(paths, mapping) -> list:
             print(f"[完成] 已產生去識別化檔案：{out_path}")
 
         elif ext in CODE_EXTENSIONS or ext in TEXT_FILE_EXTENSIONS:
-            kind = "程式碼檔案" if ext in CODE_EXTENSIONS else "純文字檔案"
-            print(f"[分類] {path} -> {kind}，讀取內容後套用規則")
+            is_code = ext in CODE_EXTENSIONS
+            kind = "程式碼檔案" if is_code else "純文字檔案"
+            print(f"[分類] {path} -> {kind}(依副檔名判斷)，讀取內容後套用規則")
             try:
                 with open(path, encoding="utf-8", errors="ignore") as f:
                     content = f.read()
@@ -251,7 +299,7 @@ def dispatch_files(paths, mapping) -> list:
                 print(f"[錯誤] 讀取失敗：{e}")
                 continue
 
-            masked = anonymize_text(content, mapping)
+            masked = anonymize_text(content, mapping, is_code=is_code)
             if masked:
                 out_path = f"{os.path.splitext(path)[0]}_masked{ext}"
                 with open(out_path, "w", encoding="utf-8") as f:
@@ -292,6 +340,7 @@ def on_copy(mapping):
             print("[分類] 內容含標籤 -> 還原模式")
             result = deanonymize_text(content, mapping)
         else:
+            # 這裡沒有檔名可判斷，anonymize_text 內部才會用 is_code_text() 猜測
             result = anonymize_text(content, mapping)
         if result and result != content:
             _override = {"kind": "text", "content": result, "original": content}

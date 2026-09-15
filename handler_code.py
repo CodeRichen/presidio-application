@@ -1,7 +1,8 @@
 """
 程式碼敏感資訊偵測規則：API Key、JWT、檔案路徑等。
 程式碼裡也常混著電話/信用卡/URL/密碼這類個資，所以 detect() 會借用 handler_text 的規則一起跑，
-但不跑 Presidio 模型（程式碼上下文用不太到、也容易誤判）。
+但不跑 Presidio 模型（程式碼上下文用不太到、也容易誤判），所以這裡回傳的每一筆 source 都固定是
+"regex"（詳見 handler_text._run_rules 的說明）。
 想加規則：在 RULES 加一行 Rule(...) 即可。
 """
 import re
@@ -32,6 +33,8 @@ RULES = [
 _COMPILED = [(r.name, re.compile(r.pattern, r.flags), r.validator) for r in RULES]
 
 
-def detect(text: str) -> List[Tuple[int, int, str]]:
-    """main.py 呼叫的入口：程式碼專屬規則 + handler_text 的個資規則一起跑"""
+def detect(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
+    """main.py 呼叫的入口：程式碼專屬規則 + handler_text 的個資規則一起跑。
+    回傳 (start, end, label, score, source)，這裡全部都是純正則比對，score 固定 None、
+    source 固定 "regex"（不跑 Presidio/中文 NER，見檔頭說明）。"""
     return handler_text._run_rules(text, _COMPILED) + handler_text._run_rules(text)

@@ -1,4 +1,4 @@
-# 剪貼簿敏感資訊防護工具
+# PII 偵測與假名化系統(剪貼簿敏感資訊防護工具)
 
 複製東西時自動偵測、遮蔽敏感資訊，貼上時可以還原；圖片/PDF/程式碼/一般文字分開處理。
 
@@ -30,7 +30,6 @@ handler_media.py  圖片 / PDF：OCR 抓文字位置 → 借用 handler_code 的
 | 英文 NLP 判斷 (PERSON/EMAIL/...) | **Microsoft Presidio** (`presidio-analyzer`)，底層 NLP engine 用 spaCy 的 `en_core_web_sm`                                                                                                                                                                                                       | `handler_text.py`                       |
 | 中文 NLP 判斷                    | 同一個 Presidio`AnalyzerEngine`，但 NLP engine 換成 spaCy 的 `zh_core_web_sm`，另外**額外掛載**一個自訂的 `EntityRecognizer` 子類別，內部包一個 Hugging Face `transformers.pipeline("ner")`，模型是 `ckiplab/bert-base-chinese-ner`，補強 spaCy 中文模型本身抓人名/地名/機構名不夠準的問題 | `handler_text.py`                       |
 | 語言判斷、模型可替換的設計       | 依 Unicode 範圍`\u4e00`~`\u9fff` 判斷是否含中文，再從 `NLP_MODELS = {"en": ..., "zh": ...}` 這個字典挑函式呼叫（Strategy Pattern），換模型只要改字典內容                                                                                                                                             | `handler_text.py`                       |
-| 判斷文字像不像程式碼             | 純規則式的特徵計數（`{`、`;`、`def`、`import`、`#include` 等出現次數 ≥ 3），一樣包成可替換的 `CLASSIFY_MODELS` 字典                                                                                                                                                                           | `main.py`                               |
 | 圖片文字辨識 (OCR)               | `pytesseract`（呼叫 Tesseract OCR 執行檔），語言包用 `chi_tra+eng` 同時認中英文，`image_to_data` 拿到逐字的文字內容跟像素座標                                                                                                                                                                        | `handler_media.py`                      |
 | 把同一行的字組回一句話           | 用 Tesseract 回傳的`block_num`/`par_num`/`line_num` 分組、`word_num` 排序，重建成一行文字後再拿去跑規則/模型，比對到的字元區間再換算回涵蓋那些字的像素框                                                                                                                                           | `handler_media.py`                      |
 | PDF 文字直接遮蔽（非疊色塊）     | `PyMuPDF (fitz)` 的 `add_redact_annot()` + `apply_redactions()`：這是「真正的遮蔽」，會把文字內容從 PDF 資料流裡整個移除，不是只在上面疊一層黑色矩形                                                                                                                                                 | `handler_media.py`                      |
@@ -62,62 +61,6 @@ Windows 上如果 `tesseract.exe` 沒加進 PATH，改 `handler_media.py` 裡的
 ---
 
 ## 整體流程
-
-### 複製 (`Ctrl+C`，可改)
-
-```
-按下快速鍵
-   │
-   ▼
-模擬真正的 Ctrl+C（讓來源程式正常複製）
-   │
-   ▼
-讀取剪貼簿 ── 是「檔案」？ ──是──▶ 依副檔名分類 ──▶ MEDIA_EXTENSIONS？ ──是──▶ handler_media.mask_file()
-   │                                            │                              (OCR→正則+Presidio→塗黑→存對照表)
-   否                                           否
-   │                                            ▼
-   │                                     CODE_EXTENSIONS 或
-   │                                     TEXT_FILE_EXTENSIONS？──是──▶ 讀檔內容 ──▶ 走下面「文字」流程
-   │                                            │
-   │                                            否 ──▶ 跳過(不在設定內的副檔名)
-   ▼
-內容含 <TAG_n> 標籤？
-   │
-   ├─是──▶ 查 clipboard_map.txt，還原成原文
-   │
-   └─否──▶ is_code_text(text) 判斷像不像程式碼
-              │
-              ├─是──▶ handler_code.detect()（API Key/JWT/路徑 + 個資規則，不跑 Presidio）
-              │
-              └─否──▶ handler_text.detect()
-                        │
-                        ├─ 正則規則 (RULES)
-                        │
-                        └─ contains_chinese(text)？
-                             ├─是──▶ presidio_zh()：spaCy 中文模型 + CKIP Hugging Face NER
-                             └─否──▶ presidio_en()：spaCy 英文模型
-                        │
-                        ▼
-                合併重疊區間 (merge_overlaps) → 換成 <ETYPE_n> 標籤 → 寫進 clipboard_map.txt
-                        │
-                        ▼
-              文字結果 pyperclip.copy() /
-              檔案結果 copy_files_to_clipboard()
-                （檔案類：圖片/PDF/程式碼檔/文字檔都是「產生遮蔽後的檔案」直接放回剪貼簿）
-```
-
-### 貼上 (`Ctrl+V`，可改)
-
-```
-按下快速鍵
-   │
-   ▼
-剪貼簿是純文字，且含 <TAG_n> 標籤？
-   │
-   ├─是──▶ 查表還原成真實內容 → 模擬 Ctrl+V 貼上 → 立刻把剪貼簿改回標籤版本(避免真實資料留在剪貼簿)
-   │
-   └─否──▶ 直接模擬 Ctrl+V 貼上（一般內容或檔案不受影響）
-```
 
 ### 對照表檔案
 

@@ -4,8 +4,8 @@
 只負責「檔案層級」的處理：main.py 偵測到複製的是圖片/PDF 檔案時呼叫 mask_file()。
 
 流程：
-    1) OCR / PDF 文字座標找出敏感內容的位置 (bounding box)（敏感與否的判斷邏輯借用 handler_code.detect，
-       跟文字/程式碼那邊共用同一套正則，不用重複維護）
+    1) OCR / PDF 文字座標找出敏感內容的位置 (bounding box)（敏感與否的判斷邏輯借用 handler_code.detect
+       +handler_text.presidio_matches，跟文字/程式碼那邊共用同一套規則，不用重複維護）
     2) 塗黑該區域
     3) 塗黑前，先把該區域「原始畫面」裁切下來存成 base64，寫進對照表 (media_deid_map.json)
     4) 還原時，依對照表把原始畫面貼回對應座標
@@ -23,7 +23,7 @@ import io
 import base64
 import json
 import tempfile
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 import pytesseract
@@ -72,7 +72,7 @@ def _resolve_output_path(input_path: str, suffix: str) -> str:
 
 def get_reason(label: str) -> str:
     return f"符合「{label}」規則" if label in {r.name for r in handler_code.RULES} | {r.name for r in handler_code.handler_text.RULES} \
-        else f"Presidio NLP 模型判定為「{label}」類型"
+        else f"NLP 模型判定為「{label}」類型"
 
 
 def print_masked_entries(entries: list, source_label: str):
@@ -84,26 +84,57 @@ def print_masked_entries(entries: list, source_label: str):
         page_info = f"第 {e['page'] + 1} 頁 " if "page" in e else ""
         value = e.get("value", "(無法取得文字內容，僅有畫面截圖)")
         score = e.get("score")
+        source = e.get("source")
         score_info = f"，信心分數 {score}" if score is not None else ""
-        print(f"  - {page_info}[{e['tag']}] 內容：「{value}」｜理由：{get_reason(e['label'])}{score_info}")
+        source_info = f"，來源={source}" if source else ""
+        print(f"  - {page_info}[{e['tag']}] 內容：「{value}」｜理由：{get_reason(e['label'])}{score_info}{source_info}")
 
 
-def _merge_overlaps(matches):
-    """matches 是 (start, end, label, score) 的 4 元素 tuple，重疊時只留較長的那個"""
-    matches = sorted(matches, key=lambda m: (m[0], -(m[1] - m[0])))
-    merged, last_end = [], -1
-    for m in matches:
-        start, end = m[0], m[1]
-        if start >= last_end:
-            merged.append(m)
-            last_end = end
-    return merged
+def _priority_tier(source: str, prefer_zh: bool) -> int:
+    """跟 main.py 的 _priority_tier 邏輯保持一致，數字越小越優先：
+        0 -> 正則規則 (source == "regex")
+        1 -> 跟這行文字語言吻合的模型 (文字含中文 -> zh 優先，否則 en 優先)
+        2 -> 跟這行文字語言不吻合的模型"""
+    if source == "regex":
+        return 0
+    if source == "zh":
+        return 1 if prefer_zh else 2
+    if source == "en":
+        return 2 if prefer_zh else 1
+    return 3
 
 
-def detect_matches(text: str) -> List[Tuple[int, int, str, float]]:
-    """借用 handler_code 的正則規則，再加上 handler_text 的 Presidio 模型一起判斷，重疊的結果合併"""
+def _merge_overlaps(matches, prefer_zh: bool):
+    """matches 是 (start, end, label, score, source) 的 5 元素 tuple。
+    重疊處理優先序跟 main.py 一致：正則規則 > 語言吻合的模型 > 語言不吻合的模型，
+    同優先序再比範圍長度、最後比信心分數。保留與淘汰(含信心分數)都印出來方便除錯。"""
+    ordered = sorted(
+        matches,
+        key=lambda m: (
+            _priority_tier(m[4], prefer_zh),
+            -(m[1] - m[0]),
+            -(m[3] if m[3] is not None else 0),
+        ),
+    )
+    kept = []
+    for start, end, label, score, source in ordered:
+        overlapped = any(not (end <= k[0] or start >= k[1]) for k in kept)
+        status = "淘汰(重疊)" if overlapped else "保留"
+        score_info = f"{score}" if score is not None else "None(規則比對)"
+        print(f"    [{status}] {label:<22} [{start:>4}:{end:<4}] 來源={source:<5} 信心分數={score_info}")
+        if not overlapped:
+            kept.append((start, end, label, score, source))
+    return sorted(kept, key=lambda m: m[0])
+
+
+def detect_matches(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
+    """借用 handler_code 的正則規則，再加上 handler_text 的 Presidio/中文 NER 模型一起判斷，
+    重疊的結果依「規則 > 語言吻合的模型 > 語言不吻合的模型」的優先序合併(見 _merge_overlaps)"""
     matches = handler_code.detect(text) + handler_code.handler_text.presidio_matches(text)
-    return _merge_overlaps(matches)
+    if not matches:
+        return []
+    prefer_zh = handler_code.handler_text.contains_chinese(text)
+    return _merge_overlaps(matches, prefer_zh)
 
 
 # ========== OCR 前處理 ==========
@@ -172,7 +203,7 @@ def _group_lines(words: List[dict]) -> List[List[dict]]:
 
 
 def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
-    """回傳 [(x0, y0, x1, y1, label, matched_text, score), ...]（像素座標）
+    """回傳 [(x0, y0, x1, y1, label, matched_text, score, source), ...]（像素座標）
     scale：如果 words 是從 preprocess_for_ocr() 放大過的圖片跑 OCR 得到的，這裡要傳對應的放大倍率，
     才能把座標除回原圖尺寸；呼叫端不用另外處理，這裡回傳的座標已經是「原圖座標」。"""
     boxes = []
@@ -183,7 +214,7 @@ def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
             line_text += w["text"]
             offsets.append((start, len(line_text), w))
             line_text += " "
-        for start, end, label, score in detect_matches(line_text):
+        for start, end, label, score, source in detect_matches(line_text):
             hit_words = [w for s, e, w in offsets if s < end and e > start]
             if not hit_words:
                 continue
@@ -191,7 +222,7 @@ def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
             x1 = max(w["left"] + w["width"] for w in hit_words); y1 = max(w["top"] + w["height"] for w in hit_words)
             if scale != 1.0:
                 x0, y0, x1, y1 = x0 / scale, y0 / scale, x1 / scale, y1 / scale
-            boxes.append((x0, y0, x1, y1, label, line_text[start:end], score))
+            boxes.append((x0, y0, x1, y1, label, line_text[start:end], score, source))
     return boxes
 
 
@@ -232,11 +263,11 @@ def mask_image(input_path: str, output_path: str, map_file: str = DEFAULT_MAP_FI
 
     entries, counters = [], {}
     draw = ImageDraw.Draw(img)
-    for x0, y0, x1, y1, label, value, score in boxes:
+    for x0, y0, x1, y1, label, value, score, source in boxes:
         box = (x0 - MASK_PADDING, y0 - MASK_PADDING, x1 + MASK_PADDING, y1 + MASK_PADDING)
         counters[label] = counters.get(label, 0) + 1
         entries.append({"tag": f"{label}_{counters[label]}", "label": label, "value": value, "score": score,
-                         "bbox": list(box), "crop_b64": _crop_to_png_b64(img, box)})
+                         "source": source, "bbox": list(box), "crop_b64": _crop_to_png_b64(img, box)})
         draw.rectangle(box, fill=MASK_COLOR)
 
     img.save(output_path)
@@ -280,7 +311,7 @@ def _mask_pdf_text_page(page, entries, counters):
             offsets.append((start, len(line_text), w))
             line_text += " "
 
-        for start, end, label, score in detect_matches(line_text):
+        for start, end, label, score, source in detect_matches(line_text):
             hit = [w for s, e, w in offsets if s < end and e > start]
             if not hit:
                 continue
@@ -292,6 +323,7 @@ def _mask_pdf_text_page(page, entries, counters):
             crop_pix = page.get_pixmap(clip=rect, matrix=fitz.Matrix(2, 2), annots=False)
             entries.append({"tag": f"{label}_{counters[label]}", "label": label, "page": page.number,
                              "bbox": [x0, y0, x1, y1], "value": " ".join(w[4] for w in hit), "score": score,
+                             "source": source,
                              "crop_b64": base64.b64encode(crop_pix.tobytes("png")).decode("ascii")})
             page.add_redact_annot(rect, fill=MASK_COLOR)
     page.apply_redactions()
@@ -306,7 +338,7 @@ def _mask_pdf_scanned_page(page, entries, counters, zoom: float = 2.0):
     # 所以下面把座標除以 zoom 轉回 PDF 座標時，跟原本沒有前處理的邏輯完全一樣，不用再額外處理 ocr_scale
     boxes = find_sensitive_boxes_in_words(ocr_words(processed), scale=ocr_scale)
 
-    for x0, y0, x1, y1, label, value, score in boxes:
+    for x0, y0, x1, y1, label, value, score, source in boxes:
         px0, py0, px1, py1 = x0 - MASK_PADDING, y0 - MASK_PADDING, x1 + MASK_PADDING, y1 + MASK_PADDING
         rect = fitz.Rect(px0 / zoom, py0 / zoom, px1 / zoom, py1 / zoom)
 
@@ -314,7 +346,7 @@ def _mask_pdf_scanned_page(page, entries, counters, zoom: float = 2.0):
         crop = img.crop((max(px0, 0), max(py0, 0), px1, py1))
         buf = io.BytesIO(); crop.save(buf, format="PNG")
         entries.append({"tag": f"{label}_{counters[label]}", "label": label, "value": value, "page": page.number,
-                         "bbox": [rect.x0, rect.y0, rect.x1, rect.y1], "score": score,
+                         "bbox": [rect.x0, rect.y0, rect.x1, rect.y1], "score": score, "source": source,
                          "crop_b64": base64.b64encode(buf.getvalue()).decode("ascii")})
         page.add_redact_annot(rect, fill=MASK_COLOR)
     page.apply_redactions()

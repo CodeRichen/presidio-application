@@ -33,10 +33,14 @@ pdf/圖片分支會直接 import 專案本身的 handler_media.py，所以請確
 的套件(pillow / pytesseract / pymupdf + Tesseract-OCR 主程式)都已經裝好。
 
 【本版異動】
-所有原本沒有包 try/except、一旦出錯會讓整支程式直接崩潰、看不到清楚錯誤訊息
-的關鍵步驟（複製/貼上/還原、文字偵測、handler_media 呼叫、json 檔讀取），
-現在都會攔截例外、用 traceback.print_exc() 印出完整錯誤訊息並標明是哪個步驟
-失敗，再以 sys.exit(1) 結束，方便排查問題。
+1) 配合 main.py 新增的 merge_overlaps(matches, prefer_zh) 簽名（重疊時依整段文字
+   是否含中文決定中/英模型優先序）以及候選改成 5 元素 tuple
+   (start, end, label, score, source)：detect_with_offsets() 現在會自己算出
+   prefer_zh 並傳進去，解包時也改成 5 個欄位（source 這裡用不到，直接捨棄）。
+2) 所有原本沒有包 try/except、一旦出錯會讓整支程式直接崩潰、看不到清楚錯誤訊息
+   的關鍵步驟（複製/貼上/還原、文字偵測、handler_media 呼叫、json 檔讀取），
+   都會攔截例外、用 traceback.print_exc() 印出完整錯誤訊息並標明是哪個步驟
+   失敗，再以 sys.exit(1) 結束，方便排查問題。
 """
 import os
 import sys
@@ -176,13 +180,18 @@ def run_text_flow(article, answer, result_file):
     print("[暖機] 完成，開始正式測試\n")
 
     def detect_with_offsets(text):
+        # main.py 目前的 merge_overlaps(matches, prefer_zh) 需要額外傳入 prefer_zh
+        # (整段文字是否含中文，用來決定重疊時中/英模型誰優先)；
+        # 候選也已經是 5 元素 tuple (start, end, label, score, source)，
+        # source 這裡不需要，解包時直接捨棄即可。
         try:
             is_code = main.is_code_text(text)
             matches = main.handler_code.detect(text) if is_code else main.handler_text.detect(text)
-            matches = main.merge_overlaps(matches)
+            prefer_zh = main.handler_text.contains_chinese(text)
+            matches = main.merge_overlaps(matches, prefer_zh)
         except Exception:
             _fail("文字/程式碼偵測 detect_with_offsets", None)
-        detected = [(s, e, text[s:e], label) for s, e, label, score in matches]
+        detected = [(s, e, text[s:e], label) for s, e, label, score, source in matches]
         return is_code, detected
 
     def locate_expected(article, answer):
@@ -459,7 +468,7 @@ def main_test():
         run_text_flow(article, answer, result_file)
 
     elif ext in PDF_EXTS or ext in IMAGE_EXTS:
-        ans_raw = input("請輸入對應的答案 json 檔名（裡面只需要 answer，不用 article）：")
+        ans_raw = input("請輸入對應的答案 json 檔名：")
         ans_path = _resolve_path(ans_raw)
         if ans_path is None:
             print(f"[錯誤] 找不到答案檔：{ans_raw}")

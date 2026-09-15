@@ -1,0 +1,405 @@
+{
+  "article": "CONFIDENTIAL — CORPORATE DATA SECURITY AUDIT REPORT\n\nReport Reference: AUD-2026-778341\nPrepared by: Meridian Compliance Partners LLC\nAudit Period: March 2, 2026 to March 14, 2026\nLead Auditor: Rebecca Sinclair (Auditor License No. CPA-8827104)\nClient Organization: Northbridge Financial Holdings Inc.\nClient Contact: Daniel Okafor, Chief Information Security Officer\nContact Email: daniel.okafor@northbridgefh.com\nContact Phone: (312) 555-0148\n\n1. EXECUTIVE SUMMARY\n\nThis report documents the findings of a comprehensive data security audit conducted at Northbridge Financial Holdings Inc., headquartered at 4820 Lakeshore Drive, Suite 1100, Chicago, Illinois 60611. The audit was commissioned following an internal data access review and covered personnel records, customer account files, and network access logs maintained between January 1, 2026 and February 28, 2026. The audit team also reviewed retention policies governing archived records stored at the offsite facility located at 900 Industrial Parkway, Bedford Park, Illinois 60501. The scope of the engagement was defined jointly by the client's compliance department and the audit firm during a kickoff meeting held in the first week of the audit period, and it was later expanded to include a review of third-party vendor access controls after preliminary findings suggested that external service accounts had broader database permissions than originally documented.\n\n2. METHODOLOGY\n\nThe audit team applied a risk-based sampling methodology consistent with industry standard frameworks for financial services data governance. Personnel and customer records were selected using stratified random sampling across departments and account tiers, ensuring that both high-privilege administrative accounts and standard customer-facing accounts were represented in the review. Network access logs were analyzed using automated anomaly detection tools cross-referenced against the corporate VPN allowlist, and any login event originating outside the expected IP ranges was flagged for manual review by a senior analyst. Interviews were conducted with department heads to confirm that documented access control policies matched actual operational practice, and discrepancies between policy and practice were recorded as separate findings distinct from the technical control gaps identified in the log review.\n\n2. PERSONNEL RECORDS REVIEWED\n\nThe following employee records were sampled during the audit. Each record was cross checked against the human resources database and the identity verification vendor.\n\nEmployee Jonathan Marsh, Social Security Number 512-30-8841, works as a Senior Loan Officer and can be reached at jonathan.marsh@northbridgefh.com or by phone at (312) 555-0192. His employment file lists his residential address as 1123 Cedar Grove Lane, Evanston, Illinois 60201, and his date of birth as June 14, 1988.\n\nEmployee Priya Chandrasekaran, Social Security Number 447-92-1156, serves as a Risk Analyst. Her company email is priya.chandrasekaran@northbridgefh.com and her direct line is (312) 555-0173. Her personnel file records her home address as 902 Birchwood Court, Skokie, Illinois 60076, with a date of birth of October 2, 1991.\n\nEmployee Marcus Webb, Social Security Number 398-14-7723, holds the title of Branch Manager. He can be contacted at marcus.webb@northbridgefh.com or (312) 555-0165, and his listed address is 77 Winslow Avenue, Oak Park, Illinois 60302.\n\nEmployee Elena Vasquez, Social Security Number 265-77-3390, is employed as a Compliance Officer, reachable at elena.vasquez@northbridgefh.com or (312) 555-0187. Her home address on file is 340 Maple Terrace, Berwyn, Illinois 60402.\n\nEmployee Thomas O'Brien, Employee ID NB-004471, Social Security Number 601-23-9948, works in the Fraud Prevention Unit. His email is thomas.obrien@northbridgefh.com and his cell phone number is (312) 555-0159.\n\nEmployee Natalie Ferreira, Employee ID NB-004492, Social Security Number 330-58-2214, serves as an IT Systems Administrator. Her email is natalie.ferreira@northbridgefh.com and her office extension is (312) 555-0201. Her home address is 615 Ashford Lane, Wheaton, Illinois 60187.\n\nEmployee Benjamin Cho, Employee ID NB-004518, Social Security Number 512-88-4470, works as a Credit Underwriter, reachable at benjamin.cho@northbridgefh.com or (312) 555-0214. His residential address is 48 Kenwood Street, Downers Grove, Illinois 60515.\n\n3. CUSTOMER ACCOUNT SAMPLE REVIEW\n\nA random sample of customer accounts was pulled from the core banking system to verify encryption and access controls on sensitive fields.\n\nCustomer Alice Fenwick holds account number 4471-2298-0037, with a linked debit card ending in 8823 and passport number US4821037. Her registered address is 210 Sunset Boulevard, Apartment 4B, Naperville, Illinois 60540, and her email on file is alice.fenwick88@gmail.com.\n\nCustomer Raymond Kessler holds account number 4471-2298-0091, with a driver's license number IL-K5820371, and a registered phone number of (630) 555-0212. His address is 88 Woodhaven Drive, Aurora, Illinois 60506.\n\nCustomer Grace Nakamura holds account number 4471-2298-0148, with passport number US7729104, and her contact email is grace.nakamura@outlook.com. Her file references health insurance policy number HI-2298104, retained solely for direct deposit verification purposes.\n\nCustomer Victor Palladino holds account number 4471-2298-0203, with credit card number ending in 3391, and his registered address is 55 Fairview Road, Joliet, Illinois 60435. His phone number is (815) 555-0166.\n\nCustomer Samantha Reyes holds account number 4471-2298-0267, with a wire transfer routing number 071000013, and her contact phone is (708) 555-0184. Her email is samantha.reyes@yahoo.com.\n\nCustomer Harold Whitfield holds account number 4471-2298-0312, with credit card number ending in 7745, and his registered address is 19 Millbrook Lane, Elmhurst, Illinois 60126. His phone number is (630) 555-0233.\n\nCustomer Dana Kowalczyk holds account number 4471-2298-0356, with passport number US9013287, and her email on file is dana.kowalczyk@hotmail.com. Her registered phone number is (773) 555-0288.\n\nCustomer Isabel Marchetti holds account number 4471-2298-0401, with a driver's license number IL-M7723190, and her address is 233 Riverside Court, La Grange, Illinois 60525.\n\n4. NETWORK ACCESS LOG FINDINGS\n\nDuring the audit period, the security operations center flagged several login events originating from outside the corporate VPN range for review.\n\nAn anomalous login attempt was recorded from IP address 198.51.100.42 on March 4, 2026, targeting the account of employee Jonathan Marsh. A second anomalous login was traced to IP address 203.0.113.77 on March 9, 2026, associated with a failed access attempt on the customer database using the credentials of Elena Vasquez. A third event originated from IP address 192.0.2.155 on March 11, 2026, and was linked to an unrecognized device attempting to access the fraud case management system under case reference FRD-2026-005512. A fourth event was logged from IP address 198.51.100.90 on March 12, 2026, involving a login to the archived records system using the credentials of Natalie Ferreira.\n\n5. VENDOR AND THIRD-PARTY ACCESS\n\nThe audit also reviewed third-party vendor access granted to CloudGuard Analytics Inc., whose designated account representative is Kevin Truong, reachable at kevin.truong@cloudguardanalytics.com or (415) 555-0140. Vendor access credentials were issued under service account ID SVC-CGA-0091 and were last rotated on February 20, 2026. A second vendor, Harborline Data Services LLC, was granted read-only access under service account ID SVC-HDS-0044, managed by representative Olivia Grant, who can be reached at olivia.grant@harborlinedata.com.\n\n6. FINDINGS AND RECOMMENDATIONS\n\nThe audit identified several high-priority findings, documented under internal tracking numbers FND-2026-1001, FND-2026-1002, FND-2026-1003, and FND-2026-1004. It is recommended that Northbridge Financial Holdings Inc. enforce mandatory multi-factor authentication for all remote access sessions, restrict database query permissions for the Fraud Prevention Unit, and rotate all vendor service account credentials on a ninety-day cycle going forward. In addition, the audit team recommends that the organization implement automated alerting for any login attempt originating from an IP address outside the approved corporate range, rather than relying solely on periodic manual log review, since the anomalous events described in Section 4 were only identified retrospectively during this engagement. Management should also consider tightening the offboarding process for departing employees to ensure that credentials are revoked within twenty-four hours of separation, and should require annual re-certification of all vendor access grants rather than allowing them to persist indefinitely once initially approved.\n\n7. RISK RATING SUMMARY\n\nEach finding in this report has been assigned a qualitative risk rating of High, Medium, or Low based on the likelihood of exploitation and the potential impact on customer or employee data. Findings related to unmonitored external login attempts and overly broad vendor database permissions were rated High due to the direct exposure of sensitive personal and financial information. Findings related to documentation gaps between stated policy and observed practice were generally rated Medium, reflecting a lower immediate risk but a meaningful control weakness that could compound over time if left unaddressed. No findings in this engagement were rated Low, as the sample review consistently surfaced conditions warranting remediation within the current fiscal quarter.\n\n7. SIGN-OFF\n\nThis report was reviewed and approved for release by Rebecca Sinclair on March 15, 2026. Questions regarding this report should be directed to Meridian Compliance Partners LLC at audits@meridiancompliance.com or by calling the main office at (212) 555-0199.",
+  "answer": [
+    [
+      "Meridian Compliance Partners LLC",
+      "ORGANIZATION"
+    ],
+    [
+      "Rebecca Sinclair",
+      "PERSON_NAME"
+    ],
+    [
+      "Northbridge Financial Holdings Inc.",
+      "ORGANIZATION"
+    ],
+    [
+      "Daniel Okafor",
+      "PERSON_NAME"
+    ],
+    [
+      "daniel.okafor@northbridgefh.com",
+      "EMAIL"
+    ],
+    [
+      "(312) 555-0148",
+      "PHONE_NUMBER"
+    ],
+    [
+      "4820 Lakeshore Drive, Suite 1100, Chicago, Illinois 60611",
+      "ADDRESS"
+    ],
+    [
+      "Jonathan Marsh",
+      "PERSON_NAME"
+    ],
+    [
+      "512-30-8841",
+      "SSN"
+    ],
+    [
+      "jonathan.marsh@northbridgefh.com",
+      "EMAIL"
+    ],
+    [
+      "(312) 555-0192",
+      "PHONE_NUMBER"
+    ],
+    [
+      "1123 Cedar Grove Lane, Evanston, Illinois 60201",
+      "ADDRESS"
+    ],
+    [
+      "June 14, 1988",
+      "DATE_OF_BIRTH"
+    ],
+    [
+      "Priya Chandrasekaran",
+      "PERSON_NAME"
+    ],
+    [
+      "447-92-1156",
+      "SSN"
+    ],
+    [
+      "priya.chandrasekaran@northbridgefh.com",
+      "EMAIL"
+    ],
+    [
+      "(312) 555-0173",
+      "PHONE_NUMBER"
+    ],
+    [
+      "902 Birchwood Court, Skokie, Illinois 60076",
+      "ADDRESS"
+    ],
+    [
+      "October 2, 1991",
+      "DATE_OF_BIRTH"
+    ],
+    [
+      "Marcus Webb",
+      "PERSON_NAME"
+    ],
+    [
+      "398-14-7723",
+      "SSN"
+    ],
+    [
+      "marcus.webb@northbridgefh.com",
+      "EMAIL"
+    ],
+    [
+      "(312) 555-0165",
+      "PHONE_NUMBER"
+    ],
+    [
+      "77 Winslow Avenue, Oak Park, Illinois 60302",
+      "ADDRESS"
+    ],
+    [
+      "Elena Vasquez",
+      "PERSON_NAME"
+    ],
+    [
+      "265-77-3390",
+      "SSN"
+    ],
+    [
+      "elena.vasquez@northbridgefh.com",
+      "EMAIL"
+    ],
+    [
+      "(312) 555-0187",
+      "PHONE_NUMBER"
+    ],
+    [
+      "340 Maple Terrace, Berwyn, Illinois 60402",
+      "ADDRESS"
+    ],
+    [
+      "Thomas O'Brien",
+      "PERSON_NAME"
+    ],
+    [
+      "NB-004471",
+      "EMPLOYEE_ID"
+    ],
+    [
+      "601-23-9948",
+      "SSN"
+    ],
+    [
+      "thomas.obrien@northbridgefh.com",
+      "EMAIL"
+    ],
+    [
+      "(312) 555-0159",
+      "PHONE_NUMBER"
+    ],
+    [
+      "Natalie Ferreira",
+      "PERSON_NAME"
+    ],
+    [
+      "NB-004492",
+      "EMPLOYEE_ID"
+    ],
+    [
+      "330-58-2214",
+      "SSN"
+    ],
+    [
+      "natalie.ferreira@northbridgefh.com",
+      "EMAIL"
+    ],
+    [
+      "(312) 555-0201",
+      "PHONE_NUMBER"
+    ],
+    [
+      "615 Ashford Lane, Wheaton, Illinois 60187",
+      "ADDRESS"
+    ],
+    [
+      "Benjamin Cho",
+      "PERSON_NAME"
+    ],
+    [
+      "NB-004518",
+      "EMPLOYEE_ID"
+    ],
+    [
+      "512-88-4470",
+      "SSN"
+    ],
+    [
+      "benjamin.cho@northbridgefh.com",
+      "EMAIL"
+    ],
+    [
+      "(312) 555-0214",
+      "PHONE_NUMBER"
+    ],
+    [
+      "48 Kenwood Street, Downers Grove, Illinois 60515",
+      "ADDRESS"
+    ],
+    [
+      "Alice Fenwick",
+      "PERSON_NAME"
+    ],
+    [
+      "4471-2298-0037",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "8823",
+      "CREDIT_CARD_LAST4"
+    ],
+    [
+      "US4821037",
+      "PASSPORT_NUMBER"
+    ],
+    [
+      "210 Sunset Boulevard, Apartment 4B, Naperville, Illinois 60540",
+      "ADDRESS"
+    ],
+    [
+      "alice.fenwick88@gmail.com",
+      "EMAIL"
+    ],
+    [
+      "Raymond Kessler",
+      "PERSON_NAME"
+    ],
+    [
+      "4471-2298-0091",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "IL-K5820371",
+      "DRIVERS_LICENSE"
+    ],
+    [
+      "(630) 555-0212",
+      "PHONE_NUMBER"
+    ],
+    [
+      "88 Woodhaven Drive, Aurora, Illinois 60506",
+      "ADDRESS"
+    ],
+    [
+      "Grace Nakamura",
+      "PERSON_NAME"
+    ],
+    [
+      "4471-2298-0148",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "US7729104",
+      "PASSPORT_NUMBER"
+    ],
+    [
+      "grace.nakamura@outlook.com",
+      "EMAIL"
+    ],
+    [
+      "HI-2298104",
+      "INSURANCE_POLICY_NUMBER"
+    ],
+    [
+      "Victor Palladino",
+      "PERSON_NAME"
+    ],
+    [
+      "4471-2298-0203",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "3391",
+      "CREDIT_CARD_LAST4"
+    ],
+    [
+      "55 Fairview Road, Joliet, Illinois 60435",
+      "ADDRESS"
+    ],
+    [
+      "(815) 555-0166",
+      "PHONE_NUMBER"
+    ],
+    [
+      "Samantha Reyes",
+      "PERSON_NAME"
+    ],
+    [
+      "4471-2298-0267",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "071000013",
+      "ROUTING_NUMBER"
+    ],
+    [
+      "(708) 555-0184",
+      "PHONE_NUMBER"
+    ],
+    [
+      "samantha.reyes@yahoo.com",
+      "EMAIL"
+    ],
+    [
+      "Harold Whitfield",
+      "PERSON_NAME"
+    ],
+    [
+      "4471-2298-0312",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "7745",
+      "CREDIT_CARD_LAST4"
+    ],
+    [
+      "19 Millbrook Lane, Elmhurst, Illinois 60126",
+      "ADDRESS"
+    ],
+    [
+      "(630) 555-0233",
+      "PHONE_NUMBER"
+    ],
+    [
+      "Dana Kowalczyk",
+      "PERSON_NAME"
+    ],
+    [
+      "4471-2298-0356",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "US9013287",
+      "PASSPORT_NUMBER"
+    ],
+    [
+      "dana.kowalczyk@hotmail.com",
+      "EMAIL"
+    ],
+    [
+      "(773) 555-0288",
+      "PHONE_NUMBER"
+    ],
+    [
+      "Isabel Marchetti",
+      "PERSON_NAME"
+    ],
+    [
+      "4471-2298-0401",
+      "BANK_ACCOUNT"
+    ],
+    [
+      "IL-M7723190",
+      "DRIVERS_LICENSE"
+    ],
+    [
+      "233 Riverside Court, La Grange, Illinois 60525",
+      "ADDRESS"
+    ],
+    [
+      "198.51.100.42",
+      "IP_ADDRESS"
+    ],
+    [
+      "203.0.113.77",
+      "IP_ADDRESS"
+    ],
+    [
+      "192.0.2.155",
+      "IP_ADDRESS"
+    ],
+    [
+      "FRD-2026-005512",
+      "CASE_NUMBER"
+    ],
+    [
+      "198.51.100.90",
+      "IP_ADDRESS"
+    ],
+    [
+      "CloudGuard Analytics Inc.",
+      "ORGANIZATION"
+    ],
+    [
+      "Kevin Truong",
+      "PERSON_NAME"
+    ],
+    [
+      "kevin.truong@cloudguardanalytics.com",
+      "EMAIL"
+    ],
+    [
+      "(415) 555-0140",
+      "PHONE_NUMBER"
+    ],
+    [
+      "Harborline Data Services LLC",
+      "ORGANIZATION"
+    ],
+    [
+      "Olivia Grant",
+      "PERSON_NAME"
+    ],
+    [
+      "olivia.grant@harborlinedata.com",
+      "EMAIL"
+    ],
+    [
+      "audits@meridiancompliance.com",
+      "EMAIL"
+    ],
+    [
+      "(212) 555-0199",
+      "PHONE_NUMBER"
+    ]
+  ]
+}

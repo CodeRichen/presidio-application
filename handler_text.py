@@ -1,20 +1,21 @@
 """
 一般文字（非程式碼）敏感資訊偵測規則。
-只負責「偵測」，回傳 [(start, end, label), ...]；標籤替換/存檔統一交給 main.py 處理。
+只負責「偵測」，回傳 [(start, end, label, score, source), ...]；標籤替換/存檔統一交給 main.py 處理。
 想加規則：在 RULES 加一行 Rule(...) 即可，不用動 detect()。
+
+第 5 個欄位 source 是這筆結果的「來源」，固定是下面三種之一：
+    "regex" -> 正則規則命中 (score 固定 None)
+    "en"    -> Presidio 英文模型 (spaCy en_core_web_sm + Presidio 內建規則式辨識器)
+    "zh"    -> 中文 NER 模型 (ZH_NER_MODEL_NAME)
+main.py / handler_media.py 在合併重疊結果時，就是靠這個欄位決定「規則 > 語言吻合的模型 > 語言
+不吻合的模型」的優先序，所以每個偵測函式都要老實標好 source，不能省略。
 
 偵測分三層：
     1) 正則規則 (RULES，不分語言都會跑)
-    2) 不管文字是中是英，一律先跑一次 Presidio 的英文規則式辨識器 (en_core_web_sm)
-       —— Presidio 內建的 SSN/IBAN/信用卡/加密貨幣錢包/IP 這類 pattern-based 辨識器
-       幾乎都只註冊在 supported_language="en"，用 language="zh" 呼叫是完全不會觸發的，
-       所以不管內容含不含中文都要跑這一段，不然這些內建規則等於白裝
-    3) 偵測到中文，另外疊加一次中文的 NER —— 這裡**不透過 Presidio、不用 spaCy 中文模型斷詞**，
-       直接呼叫 Hugging Face 的中文 NER 模型 (見 ZH_NER_MODEL_NAME)，
-       省掉中文斷詞這一層，架構更單純、也不用另外下載 zh_core_web_sm/trf
-第 2、3 層實際呼叫的函式在 NLP_MODELS 這個註冊表裡，想整個換掉某一層（例如英文也想換掉、
-中文想換別的模型），寫一個 func(text) -> [(start,end,label,score), ...]，
-把 NLP_MODELS["zh"] 或 NLP_MODELS["en"] 蓋掉即可，presidio_matches()/detect() 都不用動。
+    2) ㄏ
+中文想換別的模型），寫一個 func(text) -> [(start,end,label,score,source), ...]，
+把 NLP_MODELS["zh"] 或 NLP_MODELS["en"] 蓋掉即可，presidio_matches()/detect() 都不用動；
+只要記得自己的 source 欄位固定回傳 "en" 或 "zh"（對應蓋掉的是哪一層），重疊優先序才不會判斷錯。
 """
 import re
 from dataclasses import dataclass
@@ -41,11 +42,11 @@ def contains_chinese(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
 
 
-def presidio_en(text: str) -> List[Tuple[int, int, str, float]]:
+def presidio_en(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
     if _analyzer is None:
         return []
     try:
-        return [(r.start, r.end, r.entity_type, round(float(r.score), 2))
+        return [(r.start, r.end, r.entity_type, round(float(r.score), 2), "en")
                 for r in _analyzer.analyze(text=text, language="en")
                 if r.entity_type not in EXCLUDED_PRESIDIO_LABELS]
     except Exception:
@@ -75,10 +76,13 @@ except Exception as e:
     print(f"[警告] 中文 NER 模型載入失敗，中文將只用正則規則：{e}")
 
 
-def zh_ner(text: str) -> List[Tuple[int, int, str, float]]:
+def zh_ner(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
     """不經過 Presidio/spaCy，直接呼叫上面載入的中文 NER pipeline。
     如果換模型後偵測不到東西，先印 _zh_ner_pipeline(text) 看 entity_group 實際字串長怎樣，
-    再對照調整 _ZH_LABEL_MAP，很可能是標籤名稱對不上。"""
+    再對照調整 _ZH_LABEL_MAP，很可能是標籤名稱對不上。
+    注意：這裡只回傳分數 >= MIN_ZH_NER_SCORE 的結果；被門檻擋掉的候選不會出現在回傳值裡，
+    所以也不會出現在後面 main.py/handler_media.py 印出的「淘汰」清單中——那份清單印的是
+    「通過門檻、但因為跟別的結果重疊而被淘汰」的候選，門檻本身淘汰的候選這裡不保留分數可印。"""
     if _zh_ner_pipeline is None:
         return []
     try:
@@ -87,7 +91,7 @@ def zh_ner(text: str) -> List[Tuple[int, int, str, float]]:
             label = _ZH_LABEL_MAP.get(item["entity_group"])
             score = float(item["score"])
             if label and score >= MIN_ZH_NER_SCORE:
-                matches.append((item["start"], item["end"], label, round(score, 2)))
+                matches.append((item["start"], item["end"], label, round(score, 2), "zh"))
         return matches
     except Exception:
         return []  # 分析失敗不影響正則規則的結果
@@ -199,9 +203,10 @@ RULES = [
 _COMPILED = [(r.name, re.compile(r.pattern, r.flags), r.validator) for r in RULES]
 
 
-def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str, float]]:
-    """compiled 不給就用本檔的 RULES；handler_code.py 會傳自己的規則進來複用這個函式
-    正則規則沒有「信心分數」的概念，統一補 None，跟 Presidio 的結果格式對齊方便後面合併"""
+def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str, Optional[float], str]]:
+    """compiled 不給就用本檔的 RULES；handler_code.py 會傳自己的規則進來複用這個函式。
+    正則規則沒有「信心分數」的概念，統一補 None；來源固定標記 "regex"，
+    跟 Presidio/中文 NER 的結果 (來源 "en"/"zh") 對齊，方便後面合併與重疊優先序判斷。"""
     compiled = compiled if compiled is not None else _COMPILED
     matches = []
     for name, pattern, validator in compiled:
@@ -211,21 +216,22 @@ def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str, float]]:
             else:
                 value, start, end = m.group(0), m.start(), m.end()
             if validator is None or validator(value):
-                matches.append((start, end, name, None))
+                matches.append((start, end, name, None, "regex"))
     return matches
 
 
-def presidio_matches(text: str) -> List[Tuple[int, int, str, float]]:
+def presidio_matches(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
     """先永遠跑一次英文那組 (Presidio 內建的規則式辨識器如 SSN/IBAN/信用卡/加密貨幣錢包/IP
     幾乎都只註冊在 language="en" 底下，不管文字裡有沒有中文都要跑，不然這些規則等於形同虛設)，
-    偵測到中文再疊加一次 CKIP 判斷人名/地名/機構名 (不經過 Presidio/spaCy)"""
+    偵測到中文再疊加一次中文 NER 判斷人名/地名/機構名 (不經過 Presidio/spaCy)"""
     matches = NLP_MODELS["en"](text)
     if contains_chinese(text):
         matches += NLP_MODELS["zh"](text)
     return matches
 
 
-def detect(text: str) -> List[Tuple[int, int, str, float]]:
-    """main.py 呼叫的入口：回傳這段文字裡所有敏感資訊的 (start, end, label, score)，
-    score 是 Presidio 判定的信心分數 (0~1)，正則規則比對到的固定是 None"""
+def detect(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
+    """main.py 呼叫的入口：回傳這段文字裡所有敏感資訊的 (start, end, label, score, source)，
+    score 是模型判定的信心分數 (0~1)，正則規則比對到的固定是 None；
+    source 是 "regex"/"en"/"zh" 三選一，供重疊時判斷優先序用。"""
     return _run_rules(text) + presidio_matches(text)
