@@ -51,6 +51,16 @@ import tempfile
 import traceback
 import contextlib
 
+# 這裡在最上面就先 import 真正的 pyperclip 並存成 _SYSTEM_PYPERCLIP。
+# run_text_flow() 裡面為了攔截 main.py 對剪貼簿的呼叫，會把 sys.modules["pyperclip"]
+# 換成假模組；但那只是「換掉 sys.modules 這個字典裡的項目」，不會影響我們現在
+# 已經拿到手的這個真實模組物件參照，所以之後要把結果表格複製到「系統」剪貼簿
+# (不是 main.py 用的那個假剪貼簿) 時，仍然要用 _SYSTEM_PYPERCLIP，不能用 pyperclip.copy()。
+try:
+    import pyperclip as _SYSTEM_PYPERCLIP
+except Exception:
+    _SYSTEM_PYPERCLIP = None
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))   # presidio 資料夾
 PARENT_DIR = os.path.dirname(SCRIPT_DIR)                  # main.py / handler_*.py 所在的上一層資料夾
 
@@ -98,6 +108,56 @@ def _prf(tp, fp, fn):
 
 def _fmt_pct(x):
     return f"{x:.2%}" if x == x else "N/A"
+
+
+_DESC_IN_PARENS_RE = None  # 惰性編譯，避免在檔案最上面又多 import re 的必要性判斷
+
+
+def _extract_desc(title):
+    """把「版本一：嚴格比對（起訖位置 + 類型完全一致）」這種標題，
+    抽出括號裡的說明文字「起訖位置 + 類型完全一致」。抽不到就直接回傳原標題。"""
+    global _DESC_IN_PARENS_RE
+    if _DESC_IN_PARENS_RE is None:
+        import re
+        _DESC_IN_PARENS_RE = re.compile(r"（(.+)）")
+    m = _DESC_IN_PARENS_RE.search(title)
+    return m.group(1) if m else title
+
+
+def _fmt_num(x):
+    return f"{x:.4f}" if x == x else "N/A"
+
+
+def build_clipboard_table(rows):
+    """把三個版本的評分結果組成「貼上 Excel 會自動分欄」的表格文字：
+    欄位之間用 Tab 分隔、每列用換行分隔，這是 Excel 貼上時判斷分欄/分列的格式。
+    只放「比對機制與說明 / Precision / Recall / F1 Score」四欄，數字用小數(非百分比)，
+    這樣貼進 Excel 後可以直接被當成數字使用(例如拿去畫圖或再算平均)。
+    rows 是 (title, tp, fp, fn, precision, recall, f1) 的 list，tp/fp/fn 這裡不放進表格。"""
+    header = ["比對機制與說明", "Precision", "Recall", "F1 Score"]
+    lines = ["\t".join(header)]
+    for title, tp, fp, fn, precision, recall, f1 in rows:
+        lines.append("\t".join([
+            _extract_desc(title),
+            _fmt_num(precision),
+            _fmt_num(recall),
+            _fmt_num(f1),
+        ]))
+    return "\n".join(lines)
+
+
+def copy_table_to_clipboard(table_text):
+    """複製到系統剪貼簿(用最上面存好的真實 pyperclip，不是 main.py 用的假剪貼簿)。
+    失敗只印警告，不中止程式——複製到剪貼簿失敗不影響報告檔已經寫好這件事。"""
+    if _SYSTEM_PYPERCLIP is None:
+        print("[警告] 找不到 pyperclip 套件，無法複製結果表格到剪貼簿(報告檔仍已正常寫入)")
+        return
+    try:
+        _SYSTEM_PYPERCLIP.copy(table_text)
+        print("[剪貼簿] 已複製本次評分表格，可直接貼到 Excel")
+    except Exception:
+        print("[警告] 複製結果表格到剪貼簿失敗（報告檔仍已正常寫入）：")
+        traceback.print_exc()
 
 
 # ============================== 分支一：json（文字/程式碼）==============================
@@ -293,9 +353,11 @@ def run_text_flow(article, answer, result_file):
         ("版本二：寬鬆比對（範圍有重疊即可，但類型需正確）", dict(require_exact_span=False, require_label=True)),
         ("版本三：最寬鬆比對（範圍有重疊即算對，不論類型）", dict(require_exact_span=False, require_label=False)),
     ]
+    table_rows = []
     for title, kwargs in versions:
         tp_pairs, fp_left, fn_left = score_version(expected_located, detected, **kwargs)
         precision, recall, f1 = _prf(len(tp_pairs), len(fp_left), len(fn_left))
+        table_rows.append((title, len(tp_pairs), len(fp_left), len(fn_left), precision, recall, f1))
         out("")
         out("-" * 78)
         out(title)
@@ -319,6 +381,8 @@ def run_text_flow(article, answer, result_file):
     except Exception:
         _fail(f"寫入報告檔 {result_file}", None)
     print(f"報告已寫入：{result_file}")
+
+    copy_table_to_clipboard(build_clipboard_table(table_rows))
 
 
 # ============================== 分支二：pdf / 圖片 ==============================
@@ -416,9 +480,11 @@ def run_media_flow(path, answer, result_file):
         ("版本二：寬鬆比對（值有重疊即可，但類型需正確）", dict(require_exact_value=False, require_label=True)),
         ("版本三：最寬鬆比對（值有重疊即算對，不論類型）", dict(require_exact_value=False, require_label=False)),
     ]
+    table_rows = []
     for title, kwargs in versions:
         tp_pairs, fp_left, fn_left = score_media(expected, detected, **kwargs)
         precision, recall, f1 = _prf(len(tp_pairs), len(fp_left), len(fn_left))
+        table_rows.append((title, len(tp_pairs), len(fp_left), len(fn_left), precision, recall, f1))
         out("")
         out("-" * 78)
         out(title)
@@ -443,6 +509,8 @@ def run_media_flow(path, answer, result_file):
     except Exception:
         _fail(f"寫入報告檔 {result_file}", None)
     print(f"報告已寫入：{result_file}")
+
+    copy_table_to_clipboard(build_clipboard_table(table_rows))
 
 
 # ============================== 進入點 ==============================
