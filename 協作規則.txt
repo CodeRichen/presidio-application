@@ -1,9 +1,10 @@
 規範:
 
-1. 將含個資測試資料放在presidio/real資料夾裡面
-2. 小功能測試放在test資料夾裡面
-3. 勿將模型push至github，模型檔案過大，請自行下載，並在.gitignore中忽略模型檔案
-4. 不要串接api或雲端模型
+建議使用.venv，但須寫入.gitignore
+將含個資測試資料放在presidio/real資料夾裡面
+小功能測試放在test資料夾裡面
+勿將模型push至github，模型檔案過大，請自行下載，並在.gitignore中忽略模型檔案
+不要串接api或雲端模型
 
 代辦事項:
 

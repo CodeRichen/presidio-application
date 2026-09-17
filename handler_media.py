@@ -10,23 +10,43 @@
     3) 塗黑前，先把該區域「原始畫面」裁切下來存成 base64，寫進對照表 (media_deid_map.json)
     4) 還原時，依對照表把原始畫面貼回對應座標
 
+【OCR 引擎：Windows 原生 OCR (winrt.windows.media.ocr)】
+Windows 原生 OCR 的 recognize_async() 是 async API，但這支程式其餘部分(main.py 的 pynput 監聽迴圈、
+json_test.py 的測試流程)都是同步的，所以這裡用 asyncio.run() 在 ocr_words() 內部各自建立/結束一個
+事件迴圈去跑辨識，呼叫端(find_sensitive_boxes_in_words/mask_image/mask_pdf...)完全不用改成 async、
+不用互相 await。(如果是在 Jupyter Notebook 裡，本身就跑在事件迴圈中，直接 await 呼叫即可，不需要
+asyncio.run()；但這裡是給一般 .py 同步流程用，所以採用 asyncio.run() 的寫法。)
+
+另外，Windows OCR 的辨識結果 (OcrResult) 本身就有 result.lines -> line.words 這種階層結構(每個
+OcrWord 有 bounding_rect 座標)，比 Tesseract 更完整，也不用像 EasyOCR 那樣自己用座標去猜分行——
+ocr_words() 直接把每個詞屬於第幾行記在 "line_id" 欄位，_group_lines() 依這個欄位分組即可。
+Windows OCR 的 API 沒有提供逐字/逐詞的信心分數，所以這裡的 word dict 沒有 "conf" 欄位。
+
 安裝：
-    pip install pillow pytesseract pymupdf
-    另外需要安裝 Tesseract OCR 主程式 (非 pip 套件)：
-        Windows: https://github.com/UB-Mannheim/tesseract/wiki (安裝時記得勾選 Chinese-Traditional)
-        macOS  : brew install tesseract tesseract-lang
-        Linux  : sudo apt install tesseract-ocr tesseract-ocr-chi-tra
-    Windows 上若找不到 tesseract 執行檔，改下面 TESSERACT_CMD 指到安裝路徑。
+    pip install pillow pymupdf
+    (winrt 相關套件請沿用你原本能跑通這份範例程式碼時安裝的版本，一般是
+     winrt-Windows.Media.Ocr / winrt-Windows.Graphics.Imaging / winrt-Windows.Storage.Streams /
+     winrt-Windows.Globalization 這幾個命名空間套件；只能在 Windows 上執行。
+     另外要確認系統「設定 > 時間與語言 > 語言與地區」有安裝對應語言的「光學字元辨識」選用功能，
+     否則 OcrEngine.try_create_from_language() 會拿不到引擎。)
 """
 import os
 import io
 import base64
 import json
 import tempfile
+import asyncio
 from typing import List, Optional, Tuple
 
-from PIL import Image, ImageDraw, ImageOps, ImageFilter
-import pytesseract
+from PIL import Image, ImageDraw
+
+try:
+    import winrt.windows.media.ocr as ocr
+    import winrt.windows.graphics.imaging as imaging
+    import winrt.windows.storage.streams as streams
+    import winrt.windows.globalization as globalization
+except ImportError:
+    ocr = imaging = streams = globalization = None  # 沒裝 winrt 時，_get_engine() 會丟出清楚的錯誤訊息
 
 try:
     import pymupdf as fitz  # 新版套件名稱
@@ -36,18 +56,13 @@ except ImportError:
 import handler_code  # 敏感內容判斷邏輯直接借用程式碼/個資規則，不重複定義一套
 
 # ========================= 設定區 =========================
-TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # 沒加進 PATH 才需要設定
-if os.path.exists(TESSERACT_CMD):
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+OCR_LANG_TAG = "zh-Hant-TW"   # 優先嘗試載入的語言；系統沒裝這個語言的 OCR 選用功能時，自動退回系統預設語言
 
-OCR_LANG = "chi_tra+eng"      # Tesseract 語言包，依需求調整，例如只用 "eng"
 MASK_COLOR = (0, 0, 0)        # 遮蔽色塊顏色
 MASK_PADDING = 2              # 遮蔽框比偵測到的文字框多留幾個 px，避免邊緣殘留
 DEFAULT_MAP_FILE = "./presidio/media_deid_map.json"
 
 MIN_OCR_WIDTH = 1600           # OCR 前處理：圖片寬度小於這個值就放大，小字體/低解析度圖片辨識率會差很多
-ADAPTIVE_THRESH_BLOCK = 31     # 有裝 opencv 時，adaptive threshold 的區塊大小 (需為奇數)
-ADAPTIVE_THRESH_C = 15         # 同上，threshold 的常數項，光線不均的照片可以調這兩個值
 
 # 遮蔽/還原後的檔案要存在哪裡，改這個變數就好：
 #   None          -> 系統暫存資料夾 (預設；不會弄髒原始檔案所在的資料夾，反正結果都會放回剪貼簿)
@@ -56,18 +71,52 @@ ADAPTIVE_THRESH_C = 15         # 同上，threshold 的常數項，光線不均�
 MEDIA_OUTPUT_DIR = None
 # ===========================================================
 
+_ocr_engine = None  # 惰性初始化：第一次真的要 OCR 才建立引擎，main.py import 這支檔案時不會卡住
 
-def _resolve_output_path(input_path: str, suffix: str) -> str:
-    ext = os.path.splitext(input_path)[1].lower()
-    name = os.path.splitext(os.path.basename(input_path))[0]
-    if MEDIA_OUTPUT_DIR is None:
-        folder = tempfile.gettempdir()
-    elif MEDIA_OUTPUT_DIR == "SAME_FOLDER":
-        folder = os.path.dirname(input_path)
-    else:
-        os.makedirs(MEDIA_OUTPUT_DIR, exist_ok=True)
-        folder = MEDIA_OUTPUT_DIR
-    return os.path.join(folder, f"{name}{suffix}{ext}")
+
+def _get_engine():
+    """建立/回傳 Windows OCR 引擎單例。這段邏輯跟你提供的範例程式碼一致：
+    優先嘗試 OCR_LANG_TAG，系統沒裝該語言的 OCR 選用功能就退回使用者設定檔裡的預設語言。"""
+    global _ocr_engine
+    if _ocr_engine is None:
+        if ocr is None:
+            raise RuntimeError(
+                "尚未安裝 winrt 相關套件 (winrt.windows.media.ocr 等)，"
+                "請安裝跟你原本範例程式碼相同版本的 winrt-Windows.* 套件，且只能在 Windows 上執行"
+            )
+        lang = globalization.Language(OCR_LANG_TAG)
+        if ocr.OcrEngine.is_language_supported(lang):
+            _ocr_engine = ocr.OcrEngine.try_create_from_language(lang)
+            print(f"已成功載入：{OCR_LANG_TAG} OCR 引擎")
+        else:
+            _ocr_engine = ocr.OcrEngine.try_create_from_user_profile_languages()
+            if _ocr_engine is not None:
+                print(f"{OCR_LANG_TAG} 不受支援，載入系統預設 OCR 引擎：{_ocr_engine.recognizer_language.language_tag}")
+        if _ocr_engine is None:
+            raise RuntimeError(
+                "無法建立 Windows OCR 引擎，請確認「設定 > 時間與語言 > 語言與地區」"
+                "已安裝對應語言的「光學字元辨識」選用功能"
+            )
+    return _ocr_engine
+
+
+async def _recognize_bytes_async(img_bytes: bytes):
+    """把記憶體中的圖片位元組丟給 Windows OCR 引擎辨識，回傳 OcrResult。
+    寫法跟你提供的 run_win_ocr_on_file() 一致，只是輸入從「檔案路徑」改成「位元組」，
+    這樣不管圖片是從硬碟讀的、還是 PDF 頁面轉出來的 pixmap、或是前處理後的暫存圖片，
+    都不用先落地成檔案才能餵給 OCR。"""
+    stream = streams.InMemoryRandomAccessStream()
+    writer = streams.DataWriter(stream)
+    writer.write_bytes(img_bytes)
+
+    await writer.store_async()
+    await writer.flush_async()
+    writer.detach_stream()
+    stream.seek(0) if hasattr(stream, 'seek') else setattr(stream, 'position', 0)
+
+    decoder = await imaging.BitmapDecoder.create_async(stream)
+    software_bitmap = await decoder.get_software_bitmap_async()
+    return await _get_engine().recognize_async(software_bitmap)
 
 
 def get_reason(label: str) -> str:
@@ -139,67 +188,48 @@ def detect_matches(text: str) -> List[Tuple[int, int, str, Optional[float], str]
 
 # ========== OCR 前處理 ==========
 def preprocess_for_ocr(img: Image.Image) -> Tuple[Image.Image, float]:
-    """OCR 前的影像前處理，提升 Tesseract 辨識率：
-        1) 轉灰階（顏色對文字辨識沒幫助，反而增加雜訊）
-        2) 太小的圖放大到至少 MIN_OCR_WIDTH 寬（小字體/低解析度截圖是常見的辨識率殺手）
-        3) 去雜訊 + 二值化：
-           - 有裝 opencv-python(cv2) 的話用 adaptive threshold + 去雜訊，效果較好，
-             尤其是手機拍照那種光線不均勻的圖
-           - 沒裝的話退回只用 Pillow 做全域對比拉伸 + 銳化 + 固定閾值二值化，一樣有幫助，只是效果較普通
+    """Windows 原生 OCR 前的影像前處理：
+    Windows OCR 引擎本身也是端對端模型，不太需要像 Tesseract 那樣額外二值化/去雜訊，
+    所以這裡只保留「太小的圖放大到至少 MIN_OCR_WIDTH 寬」這一步(小字體/低解析度截圖仍然是
+    常見的辨識率殺手)，圖片維持原本的彩色，交給 OCR 引擎自己處理。
     回傳 (前處理後的圖片, scale)，scale 是實際放大的倍率（沒放大就是 1.0）。
     呼叫端要記得：偵測到的座標是在「前處理後的圖片」上，貼回原圖/PDF 前要除以這個 scale 換算回去。
     """
-    gray = ImageOps.grayscale(img)
-
-    scale = max(1.0, MIN_OCR_WIDTH / gray.width)
+    scale = max(1.0, MIN_OCR_WIDTH / img.width)
     if scale > 1.0:
-        gray = gray.resize((round(gray.width * scale), round(gray.height * scale)), Image.LANCZOS)
-
-    try:
-        import cv2
-        import numpy as np
-        arr = np.array(gray)
-        arr = cv2.fastNlMeansDenoising(arr, h=10)
-        arr = cv2.adaptiveThreshold(
-            arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,
-            ADAPTIVE_THRESH_BLOCK, ADAPTIVE_THRESH_C,
-        )
-        processed = Image.fromarray(arr)
-    except ImportError:
-        # 沒裝 opencv 也能跑，只是效果比不上 adaptive threshold：
-        # 自動拉伸對比 -> 銳化邊緣 -> 固定閾值轉黑白
-        processed = ImageOps.autocontrast(gray).filter(ImageFilter.SHARPEN)
-        processed = processed.point(lambda p: 255 if p > 180 else 0)
-
-    return processed, scale
+        img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
+    return img, scale
 
 
 # ========== OCR 共用工具 ==========
 def ocr_words(pil_image: Image.Image) -> List[dict]:
-    data = pytesseract.image_to_data(pil_image, lang=OCR_LANG, output_type=pytesseract.Output.DICT)
+    """呼叫 Windows 原生 OCR，回傳跟其他引擎版本相容的格式：
+    [{"text", "left", "top", "width", "height", "line_id"}, ...]（像素座標）。
+    line_id 是 Windows OCR 原生就有的「這個詞屬於第幾行」資訊 (result.lines 的索引)，
+    比自己用座標去猜分行準確可靠，_group_lines() 直接依這個欄位分組即可。"""
+    buf = io.BytesIO()
+    pil_image.convert("RGB").save(buf, format="PNG")
+    result = asyncio.run(_recognize_bytes_async(buf.getvalue()))
+
     words = []
-    for i in range(len(data["text"])):
-        txt = data["text"][i].strip()
-        try:
-            conf = int(float(data["conf"][i]))
-        except (ValueError, TypeError):
-            conf = -1
-        if not txt or conf < 0:
-            continue
-        words.append({
-            "text": txt, "left": data["left"][i], "top": data["top"][i],
-            "width": data["width"][i], "height": data["height"][i],
-            "block": data["block_num"][i], "par": data["par_num"][i],
-            "line": data["line_num"][i], "word_num": data["word_num"][i],
-        })
+    for line_id, line in enumerate(result.lines):
+        for w in line.words:
+            text = w.text.strip()
+            if not text:
+                continue
+            rect = w.bounding_rect
+            words.append({"text": text, "left": rect.x, "top": rect.y,
+                           "width": rect.width, "height": rect.height, "line_id": line_id})
     return words
 
 
 def _group_lines(words: List[dict]) -> List[List[dict]]:
+    """Windows OCR 本身就有「這個詞屬於第幾行」的資訊 (ocr_words() 填進 line_id)，
+    這裡只要照 line_id 分組、行內再依 x 座標排序即可。"""
     lines = {}
     for w in words:
-        lines.setdefault((w["block"], w["par"], w["line"]), []).append(w)
-    return [sorted(v, key=lambda w: w["word_num"]) for v in lines.values()]
+        lines.setdefault(w["line_id"], []).append(w)
+    return [sorted(v, key=lambda x: x["left"]) for _, v in sorted(lines.items())]
 
 
 def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
@@ -392,3 +422,16 @@ def restore_file(masked_path: str, output_path: str = None, map_file: str = DEFA
     output_path = output_path or _resolve_output_path(masked_path, "_restored")
     (restore_pdf if ext == ".pdf" else restore_image)(masked_path, output_path, map_file)
     return output_path
+
+
+def _resolve_output_path(input_path: str, suffix: str) -> str:
+    ext = os.path.splitext(input_path)[1].lower()
+    name = os.path.splitext(os.path.basename(input_path))[0]
+    if MEDIA_OUTPUT_DIR is None:
+        folder = tempfile.gettempdir()
+    elif MEDIA_OUTPUT_DIR == "SAME_FOLDER":
+        folder = os.path.dirname(input_path)
+    else:
+        os.makedirs(MEDIA_OUTPUT_DIR, exist_ok=True)
+        folder = MEDIA_OUTPUT_DIR
+    return os.path.join(folder, f"{name}{suffix}{ext}")

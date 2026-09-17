@@ -1,6 +1,30 @@
 """
 剪貼簿敏感資訊防護 - 主程式
 ====================================================
+本檔案支援兩種「複製/貼上」運作模式，靠下面設定區的 HOTKEY_PASTE 是否有值自動切換，
+不用改任何其他程式碼、也不用維護兩份檔案：
+
+    模式 A・專屬快速鍵 (HOTKEY_PASTE 有設定值，例如 '<ctrl>+<alt>+v')：
+        HOTKEY_COPY / HOTKEY_PASTE 是另外一組按鍵組合，跟系統原生 Ctrl+C/Ctrl+V 分開、互不干擾。
+        複製時只是「算出覆蓋結果、暫存起來」，不動系統剪貼簿；要等按下專屬的貼上鍵，
+        才把覆蓋結果「暫時」寫進剪貼簿、模擬按一次 Ctrl+V、貼完馬上把剪貼簿還原成原始內容，
+        避免覆蓋結果留在系統剪貼簿上被其他程式讀到。原生 Ctrl+C / Ctrl+V 完全不受影響。
+
+    模式 B・Ctrl+C 直接當快速鍵 (HOTKEY_PASTE 留空 None 或 "")：
+        HOTKEY_COPY 直接就是 Ctrl+C 本身。按下 Ctrl+C 的當下，目標視窗本來就會自己把原始內容
+        寫進系統剪貼簿(作業系統原生行為，跟這支程式無關；pynput 的全域快速鍵只是「額外」監聽
+        同一組按鍵，不會攔截或取代原生行為，所以完全不需要、也不能再模擬一次 Ctrl+C)。
+        我們要做的只是：等原生複製寫完剪貼簿、讀出來、算出遮蔽/還原後的版本，然後
+        【直接覆寫剪貼簿】成這個新版本——原本(舊/未覆蓋)的內容就直接被新(已覆蓋)的取代掉。
+        之後使用者按下「原生」Ctrl+V 貼上時，剪貼簿裡本來就已經是新版本了，系統會自動貼上
+        新版本內容——完全不需要、也不能再另外監聽 Ctrl+V、模擬貼上，不然會變成
+        「原生貼一次 + 我們模擬貼一次」，同一份內容被貼兩次。這個模式下不會註冊任何貼上快速鍵。
+
+        注意（模式 B 專屬的副作用）：因為 HOTKEY_COPY 直接綁定 Ctrl+C，在「終端機視窗」按
+        Ctrl+C 也會同時觸發這支程式的 on_copy（嘗試讀取終端機當下剪貼簿內容並覆寫），跟終端機
+        自己原本用 Ctrl+C 觸發 KeyboardInterrupt 是兩件不相干的事，不會互相取代，但保險起見，
+        如果 Ctrl+C 停不掉腳本，直接關閉終端機視窗即可。
+
 架構：
     main.py          <- 這支：監聽快速鍵、判斷複製到的是「檔案」還是「文字」、是「程式碼」還是
                           「一般文字」，決定要交給哪個模組處理，並負責標籤替換與剪貼簿讀寫
@@ -8,7 +32,7 @@
     handler_code.py  <- 程式碼的敏感資訊規則 (API Key/JWT/路徑 + 借用 handler_text 的個資規則)
     handler_media.py <- 圖片/PDF 的偵測(OCR)+塗黑+還原
 
-想改快速鍵、副檔名分類、要用哪套方式判斷「這段文字是不是程式碼」，都在下面「設定區」改，
+想改快速鍵/模式、副檔名分類、要用哪套方式判斷「這段文字是不是程式碼」，都在下面「設定區」改，
 不用動下面的邏輯。
 
 安裝：pip install pywin32 psutil pyperclip pynput
@@ -31,9 +55,15 @@ import handler_text
 import handler_code
 import handler_media
 
-# ========================= 設定區：想改快速鍵/副檔名/分類方式都在這裡改 =========================
+# ========================= 設定區：想改快速鍵/模式/副檔名/分類方式都在這裡改 =========================
 HOTKEY_COPY = '<ctrl>+<alt>+c'    # 有標籤就還原、沒標籤就遮蔽 (跟系統原生 Ctrl+C 分開，不互相干擾)
 HOTKEY_PASTE = '<ctrl>+<alt>+v'   # 單純貼上剪貼簿目前的內容，不做任何還原/改回標籤的動作
+# ↑↑↑ 把上面兩行改成這樣就會切換成「模式 B：Ctrl+C 直接當快速鍵」，複製時直接覆寫剪貼簿，
+#     不需要、也不會註冊任何貼上快速鍵 (原生 Ctrl+V 自然就會貼出覆寫後的內容)：
+#         HOTKEY_COPY = '<ctrl>+c'
+#         HOTKEY_PASTE = None
+
+DIRECT_MODE = not HOTKEY_PASTE  # 由上面兩行自動算出，下面邏輯都靠這個布林值分流，不用再改別的地方
 
 CODE_EXTENSIONS = {".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".rs",
                     ".php", ".rb", ".sh", ".sql", ".json", ".yml", ".yaml"}
@@ -65,10 +95,16 @@ TEXT_CLASSIFY_MODE = "heuristic"
 
 TAG_RE = re.compile(r"<([A-Z_]+)_(\d+)>")
 
-# Ctrl+Alt+C 產生的「覆蓋結果」暫存在這裡，不會寫進系統剪貼簿；
+# 模式 A 用：Ctrl+Alt+C 產生的「覆蓋結果」暫存在這裡，不會寫進系統剪貼簿；
 # 只有按 HOTKEY_PASTE 才會短暫寫入剪貼簿貼上，貼完立刻還原成 original，避免覆蓋結果留在剪貼簿上被其他程式讀到。
 # kind: "text" | "files" | None，content 是覆蓋結果本身，original 是複製當下剪貼簿原本的內容。
 _override = {"kind": None, "content": None, "original": None}
+
+# 模式 B 用：純紀錄，方便你在終端機/debug 時查看「上一次複製」的新舊兩個版本；
+# 不影響剪貼簿實際內容——剪貼簿本身永遠只有一份，就是 on_copy 覆寫後的那份 (masked)。
+#   original -> 舊的、原生複製當下、尚未被覆蓋的內容
+#   masked   -> 新的、經過遮蔽/還原處理、已經直接覆寫進剪貼簿的內容
+_last_copy = {"kind": None, "original": None, "masked": None}
 
 
 def is_code_text(text: str) -> bool:
@@ -253,7 +289,8 @@ def get_clipboard_content():
 
 
 def send_key_combination(vk_code):
-    """模擬按下 Ctrl + 指定按鍵"""
+    """模擬按下 Ctrl + 指定按鍵。只有模式 A 會用到 (模式 B 的快速鍵本身就是原生按鍵，
+    不需要、也不能再模擬一次，見檔頭「模式 B」說明)。"""
     win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
     time.sleep(0.05)
     win32api.keybd_event(win32con.VK_CONTROL, 0, 0, 0)
@@ -277,7 +314,8 @@ def copy_files_to_clipboard(paths):
 # ---------- 分類 + 分派 ----------
 def dispatch_files(paths, mapping) -> list:
     """回傳實際產生的去識別化檔案路徑清單(順序對應輸入的 paths，跳過的/沒偵測到內容的不會出現)。
-    不會動剪貼簿——剪貼簿只在按下 HOTKEY_PASTE 貼上覆蓋結果時才會被短暫寫入。"""
+    不會動剪貼簿——剪貼簿只在「模式 A 按下 HOTKEY_PASTE」或「模式 B 複製當下」才會被寫入，
+    這兩種情況都是呼叫端(on_copy)決定，這支函式本身不碰剪貼簿。"""
     produced = []
     for path in paths:
         ext = os.path.splitext(path)[1].lower()
@@ -316,11 +354,20 @@ def dispatch_files(paths, mapping) -> list:
 
 
 def on_copy(mapping):
-    global _override
+    """
+    模式 A：只算出覆蓋結果存進 _override，不動剪貼簿，要等 HOTKEY_PASTE 才會真正寫入。
+    模式 B：直接把覆蓋結果寫進剪貼簿，原生 Ctrl+V 自然就會貼出新版本，不用另外處理貼上。
+    這兩種模式共用同一套偵測/分類/遮蔽邏輯，差別只在「複製完之後，結果要暫存還是直接覆寫」。
+    """
+    global _override, _last_copy
     print("\n" + "=" * 50)
-    print("【偵測到複製快速鍵】")
-    send_key_combination(ord('C'))
-    time.sleep(0.15)  # 等待剪貼簿寫入
+    print("【偵測到 Ctrl+C】" if DIRECT_MODE else "【偵測到複製快速鍵】")
+
+    if DIRECT_MODE:
+        time.sleep(0.15)  # 模式 B：快速鍵就是原生 Ctrl+C，等它自己把資料寫進剪貼簿即可，不用模擬按鍵
+    else:
+        send_key_combination(ord('C'))  # 模式 A：快速鍵不是原生複製鍵，要自己模擬一次才能拿到剪貼簿內容
+        time.sleep(0.15)
 
     title, proc = get_active_window_info()
     content_type, content = get_clipboard_content()
@@ -330,11 +377,17 @@ def on_copy(mapping):
         print(f"複製類型: 檔案 (共 {len(content)} 個)")
         out_paths = dispatch_files(content, mapping)
         if out_paths:
-            _override = {"kind": "files", "content": out_paths, "original": content}
-            print(f"[就緒] 覆蓋結果已產生 (共 {len(out_paths)} 個檔案)，按 {HOTKEY_PASTE} 才會貼上；剪貼簿本身不受影響")
+            if DIRECT_MODE:
+                copy_files_to_clipboard(out_paths)  # 直接覆寫：舊的檔案清單被新的去識別化檔案取代
+                _last_copy = {"kind": "files", "original": content, "masked": out_paths}
+                print(f"[完成] 剪貼簿已直接覆寫成去識別化後的 {len(out_paths)} 個檔案，直接按原生 Ctrl+V 貼上即可")
+            else:
+                _override = {"kind": "files", "content": out_paths, "original": content}
+                print(f"[就緒] 覆蓋結果已產生 (共 {len(out_paths)} 個檔案)，按 {HOTKEY_PASTE} 才會貼上；剪貼簿本身不受影響")
         else:
             _override = {"kind": None, "content": None, "original": None}
-            print("[結果] 未偵測到需要遮蔽的內容")
+            _last_copy = {"kind": None, "original": None, "masked": None}
+            print("[結果] 未偵測到需要遮蔽的內容" + ("，剪貼簿維持原生複製的內容不變" if DIRECT_MODE else ""))
     else:
         if TAG_RE.search(content):
             print("[分類] 內容含標籤 -> 還原模式")
@@ -343,15 +396,23 @@ def on_copy(mapping):
             # 這裡沒有檔名可判斷，anonymize_text 內部才會用 is_code_text() 猜測
             result = anonymize_text(content, mapping)
         if result and result != content:
-            _override = {"kind": "text", "content": result, "original": content}
-            print(f"[就緒] 覆蓋結果已產生，按 {HOTKEY_PASTE} 才會貼上；剪貼簿本身不受影響")
+            if DIRECT_MODE:
+                pyperclip.copy(result)  # 直接覆寫：舊的原始文字被新的遮蔽/還原後文字取代
+                _last_copy = {"kind": "text", "original": content, "masked": result}
+                print("[完成] 剪貼簿已直接覆寫成遮蔽/還原後的內容，直接按原生 Ctrl+V 貼上即可")
+            else:
+                _override = {"kind": "text", "content": result, "original": content}
+                print(f"[就緒] 覆蓋結果已產生，按 {HOTKEY_PASTE} 才會貼上；剪貼簿本身不受影響")
         else:
             _override = {"kind": None, "content": None, "original": None}
-            print("[結果] 未偵測到需要遮蔽的內容")
+            _last_copy = {"kind": None, "original": None, "masked": None}
+            print("[結果] 未偵測到需要遮蔽的內容" + ("，剪貼簿維持原生複製的內容不變" if DIRECT_MODE else ""))
     print("=" * 50)
 
 
 def on_paste(mapping):
+    """只有模式 A 會註冊/用到這個函式 (模式 B 不會把它加進 start_listener 的 hotkeys，
+    也不需要——原生 Ctrl+V 自己就會貼出 on_copy 已經直接覆寫進剪貼簿的內容)。"""
     print("\n" + "=" * 50)
     print("【偵測到貼上快速鍵】")
     title, proc = get_active_window_info()
@@ -376,7 +437,8 @@ def on_paste(mapping):
     print("=" * 50)
 
 
-_busy = False  # 防止「模擬按鍵」又觸發同一組快速鍵造成無限遞迴 (快速鍵跟系統原生複製/貼上鍵相同時必須有這層防護)
+_busy = False  # 防止「模擬按鍵」又觸發同一組快速鍵造成無限遞迴 (模式 A 快速鍵跟系統原生複製/貼上鍵相同時必須有這層防護；
+                # 模式 B 保守起見也保留這層防護，即使理論上不會自己觸發自己)
 
 
 def _guarded(func):
@@ -394,16 +456,21 @@ def _guarded(func):
 
 def start_listener():
     mapping = load_map()
-    print("【監聽啟動】")
-    print(f"  - {HOTKEY_COPY} : 有標籤就還原、沒標籤就自動遮蔽（只會產生覆蓋結果，不會動剪貼簿）")
-    print(f"  - {HOTKEY_PASTE} : 貼上覆蓋結果(文字/檔案)，貼完立刻把剪貼簿還原成原始內容；沒有覆蓋結果就單純貼上目前剪貼簿內容")
-    print("  - Ctrl+V : 系統原生貼上，完全不受這支程式影響")
-    print("在終端機視窗按 Ctrl+C 可停止腳本\n")
+    print("【監聽啟動】" + ("(模式 B：Ctrl+C 直接模式)" if DIRECT_MODE else "(模式 A：專屬快速鍵)"))
+    if DIRECT_MODE:
+        print(f"  - {HOTKEY_COPY} : 直接複製，程式自動判斷遮蔽/還原，並直接覆寫剪貼簿成處理後的版本")
+        print("  - Ctrl+V (原生) : 貼出剪貼簿目前的內容，也就是已經處理過的版本，不需要另外設定快速鍵")
+        print("提醒：Ctrl+C 已被全域攔截，若終端機視窗按 Ctrl+C 無法正常中止腳本，直接關閉終端機視窗即可\n")
+    else:
+        print(f"  - {HOTKEY_COPY} : 有標籤就還原、沒標籤就自動遮蔽（只會產生覆蓋結果，不會動剪貼簿）")
+        print(f"  - {HOTKEY_PASTE} : 貼上覆蓋結果(文字/檔案)，貼完立刻把剪貼簿還原成原始內容；沒有覆蓋結果就單純貼上目前剪貼簿內容")
+        print("  - Ctrl+V : 系統原生貼上，完全不受這支程式影響")
+        print("在終端機視窗按 Ctrl+C 可停止腳本\n")
 
-    hotkeys = {
-        HOTKEY_COPY: _guarded(lambda: on_copy(mapping)),
-        HOTKEY_PASTE: _guarded(lambda: on_paste(mapping)),
-    }
+    hotkeys = {HOTKEY_COPY: _guarded(lambda: on_copy(mapping))}
+    if not DIRECT_MODE:
+        hotkeys[HOTKEY_PASTE] = _guarded(lambda: on_paste(mapping))
+
     listener = keyboard.GlobalHotKeys(hotkeys)
     listener.start()
     try:
