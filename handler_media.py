@@ -38,7 +38,7 @@ import tempfile
 import asyncio
 from typing import List, Optional, Tuple
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 try:
     import winrt.windows.media.ocr as ocr
@@ -61,8 +61,6 @@ OCR_LANG_TAG = "zh-Hant-TW"   # 優先嘗試載入的語言；系統沒裝這個
 MASK_COLOR = (0, 0, 0)        # 遮蔽色塊顏色
 MASK_PADDING = 2              # 遮蔽框比偵測到的文字框多留幾個 px，避免邊緣殘留
 DEFAULT_MAP_FILE = "./presidio/media_deid_map.json"
-
-MIN_OCR_WIDTH = 1600           # OCR 前處理：圖片寬度小於這個值就放大，小字體/低解析度圖片辨識率會差很多
 
 # 遮蔽/還原後的檔案要存在哪裡，改這個變數就好：
 #   None          -> 系統暫存資料夾 (預設；不會弄髒原始檔案所在的資料夾，反正結果都會放回剪貼簿)
@@ -188,17 +186,44 @@ def detect_matches(text: str) -> List[Tuple[int, int, str, Optional[float], str]
 
 # ========== OCR 前處理 ==========
 def preprocess_for_ocr(img: Image.Image) -> Tuple[Image.Image, float]:
-    """Windows 原生 OCR 前的影像前處理：
-    Windows OCR 引擎本身也是端對端模型，不太需要像 Tesseract 那樣額外二值化/去雜訊，
-    所以這裡只保留「太小的圖放大到至少 MIN_OCR_WIDTH 寬」這一步(小字體/低解析度截圖仍然是
-    常見的辨識率殺手)，圖片維持原本的彩色，交給 OCR 引擎自己處理。
-    回傳 (前處理後的圖片, scale)，scale 是實際放大的倍率（沒放大就是 1.0）。
-    呼叫端要記得：偵測到的座標是在「前處理後的圖片」上，貼回原圖/PDF 前要除以這個 scale 換算回去。
     """
-    scale = max(1.0, MIN_OCR_WIDTH / img.width)
-    if scale > 1.0:
-        img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
-    return img, scale
+    OCR 影像前處理。
+
+    實驗結果顯示，將圖片固定放大到 1600px
+    並不會穩定提升 Windows OCR 的辨識準確率，
+    部分情況反而會使 CER 上升。
+
+    因此改用：
+    1. 灰階化
+    2. 對比增強
+    3. Unsharp Mask 銳化
+
+    目前不改變圖片尺寸，因此 scale 固定為 1.0，
+    OCR bounding box 可直接對應原始圖片座標。
+    """
+
+    # 1. 灰階化
+    processed = img.convert("L")
+
+    # 2. 提升文字與背景的對比
+    processed = ImageEnhance.Contrast(
+        processed
+    ).enhance(1.8)
+
+    # 3. 強化文字邊緣
+    processed = processed.filter(
+        ImageFilter.UnsharpMask(
+            radius=1.5,
+            percent=150,
+            threshold=2,
+        )
+    )
+
+    # Windows OCR 最後仍使用 RGB 圖片
+    processed = processed.convert("RGB")
+
+    # 沒有 resize，因此 OCR 座標與原圖一致
+    return processed, 1.0
 
 
 # ========== OCR 共用工具 ==========
@@ -232,6 +257,82 @@ def _group_lines(words: List[dict]) -> List[List[dict]]:
     return [sorted(v, key=lambda x: x["left"]) for _, v in sorted(lines.items())]
 
 
+def _build_compact_ocr_line(line_words: List[dict]):
+    """
+    建立不含 OCR word 人工空白的文字，
+    並保留每個字串區段對應的原始 OCR word。
+
+    主要用於補抓因 Windows OCR 中文分詞而無法匹配的 PII，
+    例如台灣地址。
+    """
+    text = ""
+    offsets = []
+
+    for w in line_words:
+        start = len(text)
+        text += w["text"]
+        offsets.append((start, len(text), w))
+
+    return text, offsets
+
+
+def _build_ip_normalized_ocr_line(line_words: List[dict]):
+    """
+    建立供 IP_ADDRESS 補抓使用的 OCR 文字。
+
+    Windows OCR 有時會將 IPv4 的句點誤辨識成
+    '·' 或 '丄'。這裡只建立 IP 專用的 normalization
+    版本，不修改原始 OCR 文字，也不影響其他 PII 規則。
+
+    每個 OCR word 的字串長度保持不變，
+    因此 offsets 仍可正確對應 bounding box。
+    """
+    text = ""
+    offsets = []
+
+    for w in line_words:
+        normalized_word = (
+            w["text"]
+            .replace("·", ".")
+            .replace("丄", ".")
+        )
+
+        start = len(text)
+        text += normalized_word
+        offsets.append((start, len(text), w))
+
+    return text, offsets
+
+
+def _build_phone_normalized_ocr_line(line_words: List[dict]):
+    """
+    建立供 TW_PHONE 補抓使用的 OCR 文字。
+
+    Windows OCR 在掃描 PDF / 低品質影像中，有時會將手機號碼中的
+    半形連字號 '-' 誤辨識成中文字「一」或中點「·」。
+    這裡只建立電話專用的 normalization 版本：
+        一 -> -
+        · -> -
+
+    不修改原始 OCR 文字，也不影響其他 PII 規則。
+    替換後字元長度不變，因此 offsets 仍可正確對應 bounding box。
+    """
+    text = ""
+    offsets = []
+
+    for w in line_words:
+        normalized_word = (
+            w["text"]
+            .replace("一", "-")
+            .replace("·", "-")
+        )
+        start = len(text)
+        text += normalized_word
+        offsets.append((start, len(text), w))
+
+    return text, offsets
+
+
 def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
     """回傳 [(x0, y0, x1, y1, label, matched_text, score, source), ...]（像素座標）
     scale：如果 words 是從 preprocess_for_ocr() 放大過的圖片跑 OCR 得到的，這裡要傳對應的放大倍率，
@@ -253,6 +354,162 @@ def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
             if scale != 1.0:
                 x0, y0, x1, y1 = x0 / scale, y0 / scale, x1 / scale, y1 / scale
             boxes.append((x0, y0, x1, y1, label, line_text[start:end], score, source))
+        # Windows OCR 常將中文地址拆成多個 word。
+        # 原本 line_text 會在人為重建時加入空白，
+        # 例如：
+        # 高 雄 市 測 試 區 測 試 路 123 號
+        #
+        # ADDRESS regex 需要連續文字，因此額外使用
+        # compact line 補抓 ADDRESS。
+        compact_text, compact_offsets = _build_compact_ocr_line(line_words)
+
+        for start, end, label, score, source in detect_matches(compact_text):
+
+            # compact 版本目前只補抓 ADDRESS，
+            # 避免改變其他既有 PII 的偵測行為。
+            if label != "ADDRESS":
+                continue
+
+            hit_words = [
+                w
+                for s, e, w in compact_offsets
+                if s < end and e > start
+            ]
+
+            if not hit_words:
+                continue
+
+            x0 = min(w["left"] for w in hit_words)
+            y0 = min(w["top"] for w in hit_words)
+
+            x1 = max(
+                w["left"] + w["width"]
+                for w in hit_words
+            )
+
+            y1 = max(
+                w["top"] + w["height"]
+                for w in hit_words
+            )
+
+            if scale != 1.0:
+                x0 /= scale
+                y0 /= scale
+                x1 /= scale
+                y1 /= scale
+
+            boxes.append(
+                (
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    label,
+                    compact_text[start:end],
+                    score,
+                    source,
+                )
+            )
+
+        # Windows OCR 有時會將 IPv4 的句點誤辨識成「·」或「丄」。
+        # 使用 IP 專用 normalization 補抓 IP_ADDRESS，不影響其他 PII 規則。
+        ip_text, ip_offsets = _build_ip_normalized_ocr_line(line_words)
+
+        for start, end, label, score, source in detect_matches(ip_text):
+            if label != "IP_ADDRESS":
+                continue
+
+            hit_words = [
+                w
+                for s, e, w in ip_offsets
+                if s < end and e > start
+            ]
+            if not hit_words:
+                continue
+
+            x0 = min(w["left"] for w in hit_words)
+            y0 = min(w["top"] for w in hit_words)
+            x1 = max(w["left"] + w["width"] for w in hit_words)
+            y1 = max(w["top"] + w["height"] for w in hit_words)
+
+            if scale != 1.0:
+                x0 /= scale
+                y0 /= scale
+                x1 /= scale
+                y1 /= scale
+
+            # 正常 OCR 文字可能已在第一輪被偵測到，避免加入重複 IP box。
+            already_detected = any(
+                existing[4] == "IP_ADDRESS"
+                and abs(existing[0] - x0) < 1
+                and abs(existing[1] - y0) < 1
+                and abs(existing[2] - x1) < 1
+                and abs(existing[3] - y1) < 1
+                for existing in boxes
+            )
+            if already_detected:
+                continue
+
+            boxes.append(
+                (
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    label,
+                    ip_text[start:end],
+                    score,
+                    source,
+                )
+            )
+        # 電話專用 OCR normalization：只修正已辨識出的分隔符，
+        # 不猜測或補回 OCR 已遺失的數字。
+        phone_text, phone_offsets = _build_phone_normalized_ocr_line(line_words)
+
+        for start, end, label, score, source in detect_matches(phone_text):
+            if label != "TW_PHONE":
+                continue
+
+            hit_words = [
+                w for s, e, w in phone_offsets
+                if s < end and e > start
+            ]
+            if not hit_words:
+                continue
+
+            x0 = min(w["left"] for w in hit_words)
+            y0 = min(w["top"] for w in hit_words)
+            x1 = max(w["left"] + w["width"] for w in hit_words)
+            y1 = max(w["top"] + w["height"] for w in hit_words)
+
+            if scale != 1.0:
+                x0 /= scale
+                y0 /= scale
+                x1 /= scale
+                y1 /= scale
+
+            already_detected = any(
+                existing[4] == "TW_PHONE"
+                and abs(existing[0] - x0) < 1
+                and abs(existing[1] - y0) < 1
+                and abs(existing[2] - x1) < 1
+                and abs(existing[3] - y1) < 1
+                for existing in boxes
+            )
+            if already_detected:
+                continue
+
+            boxes.append(
+                (
+                    x0, y0, x1, y1,
+                    label,
+                    phone_text[start:end],
+                    score,
+                    source,
+                )
+            )
+
+
     return boxes
 
 
@@ -359,26 +616,152 @@ def _mask_pdf_text_page(page, entries, counters):
     page.apply_redactions()
 
 
-def _mask_pdf_scanned_page(page, entries, counters, zoom: float = 2.0):
+def _pdf_rects_overlap(rect_a, rect_b, threshold: float = 0.5) -> bool:
+    """
+    判斷兩個 PDF 座標框是否代表同一處 PII。
+
+    multi-zoom OCR 對同一段文字產生的框通常只會有少量座標差異。
+    這裡用「交集面積 / 較小框面積」判斷，而不是只看 label，
+    因此同一頁出現多個電話、Email、地址時不會互相吃掉。
+    """
+    ax0, ay0, ax1, ay1 = rect_a
+    bx0, by0, bx1, by1 = rect_b
+
+    ix0 = max(ax0, bx0)
+    iy0 = max(ay0, by0)
+    ix1 = min(ax1, bx1)
+    iy1 = min(ay1, by1)
+
+    if ix1 <= ix0 or iy1 <= iy0:
+        return False
+
+    intersection = (ix1 - ix0) * (iy1 - iy0)
+    area_a = max(0.0, ax1 - ax0) * max(0.0, ay1 - ay0)
+    area_b = max(0.0, bx1 - bx0) * max(0.0, by1 - by0)
+    smaller_area = min(area_a, area_b)
+
+    return smaller_area > 0 and intersection / smaller_area >= threshold
+
+
+def _collect_pdf_ocr_boxes(page, zoom: float):
+    """
+    以指定 zoom 對掃描 PDF 頁面做一次 OCR。
+
+    回傳：
+      1. 轉回 PDF 座標系的 PII boxes
+      2. 該 zoom render 出來的 PIL Image
+
+    box 格式：
+      (x0, y0, x1, y1, label, value, score, source)
+    """
     matrix = fitz.Matrix(zoom, zoom)
     pix = page.get_pixmap(matrix=matrix, annots=False)
     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
     processed, ocr_scale = preprocess_for_ocr(img)
-    # find_sensitive_boxes_in_words 已經把座標除回 ocr_scale，回傳的是「img」(zoom 轉出來的原圖) 座標系，
-    # 所以下面把座標除以 zoom 轉回 PDF 座標時，跟原本沒有前處理的邏輯完全一樣，不用再額外處理 ocr_scale
-    boxes = find_sensitive_boxes_in_words(ocr_words(processed), scale=ocr_scale)
+    pixel_boxes = find_sensitive_boxes_in_words(
+        ocr_words(processed),
+        scale=ocr_scale,
+    )
+
+    pdf_boxes = []
+    for x0, y0, x1, y1, label, value, score, source in pixel_boxes:
+        # padding 先在該 zoom 的像素座標加入，再除以 zoom 回到 PDF 座標。
+        px0 = x0 - MASK_PADDING
+        py0 = y0 - MASK_PADDING
+        px1 = x1 + MASK_PADDING
+        py1 = y1 + MASK_PADDING
+
+        pdf_boxes.append((
+            px0 / zoom,
+            py0 / zoom,
+            px1 / zoom,
+            py1 / zoom,
+            label,
+            value,
+            score,
+            source,
+        ))
+
+    return pdf_boxes, img
+
+
+def _merge_pdf_multizoom_boxes(primary_boxes, fallback_boxes):
+    """
+    合併 multi-zoom OCR 結果。
+
+    primary (zoom=2.0) 全部保留；
+    fallback (zoom=3.0) 只有在「同 label 且位置高度重疊」時才視為重複。
+    因此不是 label 層級去重，同一頁可安全保留多筆相同類型 PII。
+    """
+    merged = list(primary_boxes)
+
+    for candidate in fallback_boxes:
+        candidate_rect = candidate[:4]
+        candidate_label = candidate[4]
+
+        duplicate = any(
+            existing[4] == candidate_label
+            and _pdf_rects_overlap(existing[:4], candidate_rect)
+            for existing in merged
+        )
+
+        if not duplicate:
+            merged.append(candidate)
+
+    return merged
+
+
+def _mask_pdf_scanned_page(page, entries, counters, zoom: float = 2.0):
+    """
+    掃描 PDF 使用 multi-zoom OCR：
+      - zoom=2.0 作為主要辨識結果
+      - zoom=3.0 作為 fallback
+      - 兩次結果都先轉回 PDF 座標，再依 label + 位置重疊去重
+
+    zoom 參數保留相容性；預設 2.0 為 primary，fallback 固定比實驗驗證過的 3.0。
+    """
+    primary_zoom = zoom
+    fallback_zoom = 3.0
+
+    primary_boxes, primary_img = _collect_pdf_ocr_boxes(page, primary_zoom)
+    fallback_boxes, fallback_img = _collect_pdf_ocr_boxes(page, fallback_zoom)
+
+    # 若呼叫端未來真的傳入 3.0，就不需要同一 zoom 重跑兩次。
+    if abs(primary_zoom - fallback_zoom) < 1e-9:
+        boxes = primary_boxes
+    else:
+        boxes = _merge_pdf_multizoom_boxes(primary_boxes, fallback_boxes)
 
     for x0, y0, x1, y1, label, value, score, source in boxes:
-        px0, py0, px1, py1 = x0 - MASK_PADDING, y0 - MASK_PADDING, x1 + MASK_PADDING, y1 + MASK_PADDING
-        rect = fitz.Rect(px0 / zoom, py0 / zoom, px1 / zoom, py1 / zoom)
+        rect = fitz.Rect(x0, y0, x1, y1)
 
         counters[label] = counters.get(label, 0) + 1
-        crop = img.crop((max(px0, 0), max(py0, 0), px1, py1))
-        buf = io.BytesIO(); crop.save(buf, format="PNG")
-        entries.append({"tag": f"{label}_{counters[label]}", "label": label, "value": value, "page": page.number,
-                         "bbox": [rect.x0, rect.y0, rect.x1, rect.y1], "score": score, "source": source,
-                         "crop_b64": base64.b64encode(buf.getvalue()).decode("ascii")})
+
+        # 對照表中的 crop 必須對應 PDF rect。
+        # 統一使用 primary render 擷取，避免 fallback zoom 的像素座標混入。
+        crop_box = (
+            max(int(round(rect.x0 * primary_zoom)), 0),
+            max(int(round(rect.y0 * primary_zoom)), 0),
+            min(int(round(rect.x1 * primary_zoom)), primary_img.width),
+            min(int(round(rect.y1 * primary_zoom)), primary_img.height),
+        )
+        crop = primary_img.crop(crop_box)
+        buf = io.BytesIO()
+        crop.save(buf, format="PNG")
+
+        entries.append({
+            "tag": f"{label}_{counters[label]}",
+            "label": label,
+            "value": value,
+            "page": page.number,
+            "bbox": [rect.x0, rect.y0, rect.x1, rect.y1],
+            "score": score,
+            "source": source,
+            "crop_b64": base64.b64encode(buf.getvalue()).decode("ascii"),
+        })
         page.add_redact_annot(rect, fill=MASK_COLOR)
+
     page.apply_redactions()
 
 
