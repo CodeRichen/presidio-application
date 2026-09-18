@@ -1,16 +1,16 @@
 """
-OCR Accuracy Baseline Test
+OCR Accuracy Test
 
 目的：
 1. 自動建立多種不同難度的假 PII 測試圖片
 2. 全部使用目前 handler_media.py 的 OCR 流程
 3. 計算每個測試情境的 CER（Character Error Rate）
-4. 建立修改 OCR 前的 Before Baseline
+4. 固定測試條件，供 OCR 修改前後比較
 
 重要：
 - 所有測試資料都是虛構資料，不含真實個資
 - 此程式不修改 handler_media.py
-- 建立 baseline 後，不應再任意修改測試條件
+- 為了維持修改前後可比較性，不應任意修改測試條件
 """
 
 import sys
@@ -446,7 +446,7 @@ def print_test_result(result: dict):
 def print_summary(results: list[dict]):
     print("\n")
     print("=" * 60)
-    print("OCR BEFORE-IMPROVEMENT BASELINE SUMMARY")
+    print("OCR ACCURACY TEST SUMMARY")
     print("=" * 60)
 
     print(
@@ -497,7 +497,7 @@ def main():
     )
 
     print("=" * 60)
-    print("OCR BEFORE-IMPROVEMENT BASELINE")
+    print("OCR ACCURACY TEST")
     print("=" * 60)
 
     print("\nGround Truth：")
