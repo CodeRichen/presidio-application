@@ -11,3 +11,13 @@ __pycache__/
 
 # Generated OCR test images
 test/ocr_samples/
+
+
+# Generated PDF OCR test files
+test/ocr_pdf_samples/
+test/pdf_mask_restore_smoke_samples/
+
+# Generated PDF OCR experiment files
+test/ocr_pdf_failure_samples/
+test/ocr_pdf_fallback_samples/
+test/ocr_pdf_zoom_samples/
