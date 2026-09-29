@@ -84,23 +84,58 @@ except Exception as e:
 
 def zh_ner(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
     """不經過 Presidio/spaCy，直接呼叫上面載入的中文 NER pipeline。
-    如果換模型後偵測不到東西，先印 _zh_ner_pipeline(text) 看 entity_group 實際字串長怎樣，
-    再對照調整 _ZH_LABEL_MAP，很可能是標籤名稱對不上。
-    注意：這裡只回傳分數 >= MIN_ZH_NER_SCORE 的結果；被門檻擋掉的候選不會出現在回傳值裡，
-    所以也不會出現在後面 main.py/handler_media.py 印出的「淘汰」清單中——那份清單印的是
-    「通過門檻、但因為跟別的結果重疊而被淘汰」的候選，門檻本身淘汰的候選這裡不保留分數可印。"""
-    if _zh_ner_pipeline is None:
+
+    中文 Transformer 對過長輸入可能因模型最大長度而分析失敗，因此這裡會把長文字
+    切成帶有 overlap 的區塊分別推論，再把區塊內座標換回原文的全域座標。
+    overlap 可避免人名/地址等實體剛好落在切割邊界時被切成兩半。
+
+    注意：這裡只回傳分數 >= MIN_ZH_NER_SCORE 的結果；被門檻擋掉的候選不會出現在回傳值裡。
+    """
+    if _zh_ner_pipeline is None or not text:
         return []
+
+    # 目前實測約 400 字仍可正常推論、702 字會失敗；保守使用 350 字一段。
+    # 相鄰區塊重疊 50 字，降低敏感實體剛好被切在邊界的機率。
+    chunk_size = 350
+    overlap = 50
+    step = chunk_size - overlap
+
+    matches = []
+
     try:
-        matches = []
-        for item in _zh_ner_pipeline(text):
-            label = _ZH_LABEL_MAP.get(item["entity_group"])
-            score = float(item["score"])
-            if label and score >= MIN_ZH_NER_SCORE:
-                matches.append((item["start"], item["end"], label, round(score, 2), "zh"))
-        return matches
-    except Exception:
-        return []  # 分析失敗不影響正則規則的結果
+        for chunk_start in range(0, len(text), step):
+            chunk_end = min(chunk_start + chunk_size, len(text))
+            chunk = text[chunk_start:chunk_end]
+
+            for item in _zh_ner_pipeline(chunk):
+                label = _ZH_LABEL_MAP.get(item["entity_group"])
+                score = float(item["score"])
+                if label and score >= MIN_ZH_NER_SCORE:
+                    matches.append((
+                        chunk_start + item["start"],
+                        chunk_start + item["end"],
+                        label,
+                        round(score, 2),
+                        "zh",
+                    ))
+
+            if chunk_end >= len(text):
+                break
+
+    except Exception as e:
+        print(f"[警告] 中文 NER 分析失敗：{e}")
+        return []
+
+    # overlap 區域可能讓同一實體被兩個 chunk 重複辨識。
+    # 相同 (start, end, label, source) 僅保留信心分數較高的一筆。
+    dedup = {}
+    for match in matches:
+        key = (match[0], match[1], match[2], match[4])
+        previous = dedup.get(key)
+        if previous is None or (match[3] or 0) > (previous[3] or 0):
+            dedup[key] = match
+
+    return sorted(dedup.values(), key=lambda m: (m[0], m[1], m[2]))
 
 
 # 語言 -> NLP 模型函式 的註冊表：想加/換某個語言用的模型，往這裡改一行就好
@@ -192,7 +227,14 @@ RULES = [
     Rule("US_PHONE", _L + r"\+1[ ]?\(\d{3}\)[ ]?\d{3}-\d{4}" + _R),
     Rule("GPS_COORDINATES", r"\d{1,3}\.\d+°\s*[NS]\s*,\s*\d{1,3}\.\d+°\s*[EW]"),
     Rule("DATE_OF_BIRTH", r"\d{4}年\d{1,2}月\d{1,2}日"),  # 中文年月日格式，也可能是其他日期，非專指生日
-    Rule("MEDICAL_RECORD_NUMBER", _L + r"MRN-\d{4}-\d{6}" + _R),
+    # ---- 專案測試資料中常見的醫療 / 保險 / 理賠識別碼 ----
+    # 使用明確前綴，避免把一般英數代碼大量誤判成 PII。
+    Rule("LICENSE_NUMBER", _L + r"TWMD-\d{7}" + _R),
+    Rule("MEDICAL_RECORD_NUMBER", _L + r"(?:MRN-\d{4}-\d{6}|CGH-\d{8}-\d{4})" + _R),
+    Rule("INSURANCE_POLICY_NUMBER", _L + r"POL-TW-\d{7}" + _R),
+    Rule("EMPLOYEE_ID", _L + r"EMP-\d{5}" + _R),
+    Rule("CASE_NUMBER", _L + r"CLM-\d{4}-\d{7}" + _R),
+
     Rule("TAX_ID", r"統一編號\s*\d{8}"),           # 用中文標籤字詞當上下文錨點，降低純8碼數字的誤判
     Rule("INSURANCE_ID", r"健保投保序號\s*[A-Z]\d{10}"),  # 同上，錨定標籤文字才抓，格式太泛用容易誤判
     Rule("DRIVER_LICENSE", _L + r"[A-Z]\d{7}" + _R),      # 格式很泛用(1字母+7位數)，容易跟其他代碼誤判，可自行收緊
