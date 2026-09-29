@@ -360,6 +360,113 @@ def _add_field_aware_boxes(line_words, boxes, scale=1.0):
     """
     text, offsets = _build_compact_ocr_line(line_words)
 
+    # 圖片 OCR 欄位型 PII 補救。
+    # 只在明確欄位名稱存在時擴張 bbox，避免把一般文字誤遮。
+
+    # 姓名：Windows OCR 常把中文姓名拆成單字，NER 可能只抓到首尾字。
+    m = re.search(r"姓名[:：]?[「\"']?(?P<value>[\u3400-\u9fff]{2,4})", text)
+    if m:
+        _append_compact_span_box(
+            boxes, offsets, text,
+            m.start("value"), m.end("value"),
+            "PERSON", scale,
+            source="field_regex_person",
+        )
+
+    # 地址：補救 detector 從第二個字才開始命中的情況。
+    # 除了 regex span 外，再以明確「地址」欄位的 OCR word 邊界取值，
+    # 避免低解析度時第一個地址字（例如「高」）落在既有 ADDRESS bbox 外。
+    m = re.search(r"地址[:：]?[「\"']?(?P<value>[^，,。；;]{4,40})", text)
+    if m:
+        value = m.group("value")
+        if any(token in value for token in ("市", "縣", "區", "鄉", "鎮", "路", "街", "號")):
+            _append_compact_span_box(
+                boxes, offsets, text,
+                m.start("value"), m.end("value"),
+                "ADDRESS", scale,
+                source="field_regex_address",
+            )
+
+    # 低解析度欄位補救：只在同一 OCR 行明確出現「地址」時啟用。
+    # 找到欄位名稱結束位置後，直接從第一個非冒號 word 開始建立 ADDRESS bbox。
+    # 這裡不向左任意擴張，因此不會把「地址：」本身遮掉。
+    field_end = None
+    for i, (_s, _e, w) in enumerate(offsets):
+        if w["text"] == "地址":
+            field_end = i + 1
+            break
+        if i + 1 < len(offsets) and w["text"] == "地" and offsets[i + 1][2]["text"] == "址":
+            field_end = i + 2
+            break
+
+    if field_end is not None:
+        value_words = []
+        for _s, _e, w in offsets[field_end:]:
+            token = w["text"].strip()
+            if token in {":", "："}:
+                continue
+            if not token:
+                continue
+            value_words.append(w)
+
+        joined_value = "".join(w["text"] for w in value_words)
+        if (
+            len(joined_value) >= 4
+            and any(token in joined_value for token in ("市", "縣", "區", "鄉", "鎮", "路", "街", "號"))
+        ):
+            x0 = min(w["left"] for w in value_words)
+            y0 = min(w["top"] for w in value_words)
+            x1 = max(w["left"] + w["width"] for w in value_words)
+            y1 = max(w["top"] + w["height"] for w in value_words)
+
+            # 低解析度 OCR 可能完全漏掉地址第一個字。
+            # 例如原圖「地址：高雄市...」只辨識成「地址：雄市...」。
+            # 此時不能重建遺失文字，但可以利用「欄位分隔符 -> 第一個值 word」
+            # 的異常空隙，把可能漏掉的敏感字所在區域一併納入遮蔽。
+            #
+            # 正常字距約為單一中文字寬度的一小部分；若 gap 大於
+            # 第一個已辨識值 word 寬度的 0.9 倍，視為可能漏掉一個字。
+            # 左界只回補到分隔符右側，不會遮掉「地址」欄位名稱。
+            first_value = value_words[0]
+            separator_word = offsets[field_end - 1][2] if field_end > 0 else None
+
+            # field_end 指向「地址」後；若下一個 OCR word 是冒號，使用冒號作為 separator。
+            if field_end < len(offsets):
+                maybe_sep = offsets[field_end][2]
+                if maybe_sep["text"].strip() in {":", "："}:
+                    separator_word = maybe_sep
+
+            if separator_word is not None:
+                sep_right = separator_word["left"] + separator_word["width"]
+                gap = first_value["left"] - sep_right
+                first_width = max(first_value["width"], 1.0)
+
+                if gap >= first_width * 0.9:
+                    # 留一點正常欄位間距，避免黑框直接貼住冒號。
+                    normal_gap = min(first_width * 0.35, 6.0)
+                    x0 = max(sep_right + normal_gap, 0.0)
+
+            if scale != 1.0:
+                x0 /= scale; y0 /= scale; x1 /= scale; y1 /= scale
+            boxes.append((
+                x0, y0, x1, y1,
+                "ADDRESS", joined_value, None, "field_word_address",
+            ))
+
+    # IP：OCR 可能把 IPv4 點號讀成「· / 丄 / 工」甚至直接吞掉。
+    # 不猜回遺失的點號；只在明確 IP 欄位中遮蔽 OCR 已辨識出的數字型值。
+    m = re.search(r"(?i)(?:^|[^A-Za-z])IP[:：·.]?(?P<value>[0-9·.丄工]+)$", text)
+    if m:
+        value = m.group("value")
+        digit_count = sum(ch.isdigit() for ch in value)
+        if 7 <= digit_count <= 12:
+            _append_compact_span_box(
+                boxes, offsets, text,
+                m.start("value"), m.end("value"),
+                "IP_ADDRESS", scale,
+                source="field_regex_ip",
+            )
+
     # 完整日期：避免 Presidio 只回傳年份或日期的一小段。
     date_pat = r"(?:19|20)\d{2}年\d{1,2}月\d{1,2}日"
 
@@ -906,6 +1013,17 @@ def _dedupe_sensitive_boxes(boxes):
     excluded_labels = {"POSITION"}
     kept = [box for box in kept if box[4] not in excluded_labels]
 
+    # OCR / NER 有時會把欄位名稱「IP」誤判成 ORGANIZATION。
+    # 「IP」只是欄位標籤，不是個資值；只排除 exact value=IP，
+    # 不全域排除 ORGANIZATION，避免影響銀行分行等真正需要遮蔽的欄位。
+    kept = [
+        box for box in kept
+        if not (
+            box[4] == "ORGANIZATION"
+            and str(box[5]).strip().upper().rstrip(":：") in {"IP", "EMAIL", "TW"}
+        )
+    ]
+
     # 輸出順序依畫面位置排列，方便 terminal / map 檔閱讀。
     return sorted(kept, key=lambda b: (b[1], b[0]))
 
@@ -981,10 +1099,23 @@ def _page_has_text(page: "fitz.Page", min_words: int = 5) -> bool:
 
 
 def _mask_pdf_text_page(page, entries, counters):
+    """
+    文字層 PDF：
+    - 一般 PII 仍使用 detect_matches。
+    - 對 Phone / Email / TW ID / IP 這類明確欄位，優先只遮 value，
+      避免把 Email、TW、IP 等欄位名稱一起遮掉。
+    """
     words = page.get_text("words")
     lines = {}
     for w in words:
         lines.setdefault((w[5], w[6]), []).append(w)
+
+    field_value_patterns = [
+        ("TW_PHONE", re.compile(r"(?i)\b(?:Phone|電話)\s*[:：]\s*(?P<value>0\d{1,2}-?\d{6,8}|09\d{2}-?\d{3}-?\d{3})")),
+        ("EMAIL", re.compile(r"(?i)\bEmail\s*[:：]\s*(?P<value>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})")),
+        ("TW_ID", re.compile(r"(?i)\bTW\s*ID\s*[:：]\s*(?P<value>[A-Z][12]\d{8})")),
+        ("IP_ADDRESS", re.compile(r"(?i)\bIP\s*[:：]\s*(?P<value>(?:\d{1,3}\.){3}\d{1,3})")),
+    ]
 
     for line_words in lines.values():
         line_words.sort(key=lambda w: w[7])
@@ -995,10 +1126,37 @@ def _mask_pdf_text_page(page, entries, counters):
             offsets.append((start, len(line_text), w))
             line_text += " "
 
-        for start, end, label, score, source in detect_matches(line_text):
+        matches = list(detect_matches(line_text))
+
+        # 明確欄位改成 value-only span；同 label 的一般 detector 結果移除，
+        # 避免同一行又產生一個包含欄位名稱的較大黑框。
+        for field_label, pattern in field_value_patterns:
+            m = pattern.search(line_text)
+            if not m:
+                continue
+            matches = [item for item in matches if item[2] != field_label]
+            matches.append((
+                m.start("value"),
+                m.end("value"),
+                field_label,
+                None,
+                "pdf_field_value",
+            ))
+
+        # PDF 文字層中這些 exact token 是欄位名稱，不是敏感值。
+        field_tokens = {"PHONE", "EMAIL", "TW", "ID", "IP"}
+
+        for start, end, label, score, source in matches:
             hit = [w for s, e, w in offsets if s < end and e > start]
             if not hit:
                 continue
+
+            # 防止 NER 把單獨欄位名稱誤判成 ORGANIZATION。
+            if label == "ORGANIZATION":
+                hit_text = "".join(w[4] for w in hit).strip().upper().rstrip(":：")
+                if hit_text in field_tokens:
+                    continue
+
             x0 = min(w[0] for w in hit); y0 = min(w[1] for w in hit)
             x1 = max(w[2] for w in hit); y1 = max(w[3] for w in hit)
             rect = fitz.Rect(x0, y0, x1, y1)
@@ -1056,10 +1214,103 @@ def _collect_pdf_ocr_boxes(page, zoom: float):
     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
     processed, ocr_scale = preprocess_for_ocr(img)
+    pdf_words = ocr_words(processed)
     pixel_boxes = find_sensitive_boxes_in_words(
-        ocr_words(processed),
+        pdf_words,
         scale=ocr_scale,
     )
+
+    # 掃描 PDF 欄位名稱保護：
+    # OCR/英文 NER 偶爾會把純欄位名稱 "Email" 誤判成 PERSON，
+    # 造成 Email: 左側標籤也被遮蔽。只排除「精確等於 Email」
+    # 的 PERSON/ORGANIZATION 誤判；真正的 Email value 仍由 EMAIL 規則遮蔽。
+    pixel_boxes = [
+        box for box in pixel_boxes
+        if not (
+            box[4] in {"PERSON", "ORGANIZATION"}
+            and str(box[5]).strip().upper().rstrip(":：") == "EMAIL"
+        )
+    ]
+
+    # 掃描 PDF 專用 IPv4 fallback。
+    # low-resolution 實測可能把 ".1." 整塊 OCR 成「工」：
+    #   192.168.1.100 -> 192,168工100 / 192·168工100
+    # 這時無法可靠還原遺失的 1，但去識別化只需要把整個 value 區域遮住。
+    existing_ip = any(box[4] == "IP_ADDRESS" for box in pixel_boxes)
+    if not existing_ip:
+        for line_words in _group_lines(pdf_words):
+            raw = "".join(w["text"] for w in line_words)
+            normalized = (
+                raw.replace("·", ".")
+                   .replace("丄", ".")
+                   .replace("工", ".")
+                   .replace(",", ".")
+                   .replace("，", ".")
+                   .replace(" ", "")
+            )
+
+            valid_ip = None
+
+            # 情況 A：正規化後仍可得到完整合法 IPv4。
+            m = re.search(r"(?<!\d)(?P<ip>\d{1,3}(?:\.\d{1,3}){3})(?!\d)", normalized)
+            if m:
+                octets = m.group("ip").split(".")
+                if all(0 <= int(part) <= 255 for part in octets):
+                    valid_ip = m.group("ip")
+
+            # 情況 B：low-resolution 把 ".1." 合併成「工」。
+            # 只接受明確 IP-like 欄位：
+            #   zoom 2 實測 prefix=""   -> :192,168工100
+            #   zoom 3 實測 prefix="|P" -> |P:192·168工100
+            if valid_ip is None and ":" in raw:
+                prefix, value_part = raw.split(":", 1)
+                prefix_norm = prefix.strip().upper().replace(" ", "")
+                ip_like_prefix = prefix_norm in {"", "IP", "|P", "丨P", "1P"}
+
+                allowed = set("0123456789.·丄工,，")
+                digit_count = sum(ch.isdigit() for ch in value_part)
+                separator_count = sum(ch in ".·丄工,，" for ch in value_part)
+
+                if (
+                    ip_like_prefix
+                    and value_part
+                    and all(ch in allowed for ch in value_part)
+                    and 7 <= digit_count <= 12
+                    and separator_count >= 2
+                ):
+                    valid_ip = value_part
+
+            if valid_ip is None:
+                continue
+
+            # 只遮冒號後的 IP value，不遮 IP / |P / 冒號本身。
+            colon_index = next(
+                (i for i, w in enumerate(line_words) if w["text"].strip() in {":", "："}),
+                -1,
+            )
+            value_words = line_words[colon_index + 1:] if colon_index >= 0 else line_words
+
+            numeric_words = [
+                w for w in value_words
+                if any(ch.isdigit() for ch in w["text"])
+                or w["text"] in {".", "·", "丄", "工", ",", "，"}
+            ]
+            if not numeric_words:
+                continue
+
+            x0 = min(w["left"] for w in numeric_words)
+            y0 = min(w["top"] for w in numeric_words)
+            x1 = max(w["left"] + w["width"] for w in numeric_words)
+            y1 = max(w["top"] + w["height"] for w in numeric_words)
+            if ocr_scale != 1.0:
+                x0 /= ocr_scale; y0 /= ocr_scale
+                x1 /= ocr_scale; y1 /= ocr_scale
+
+            pixel_boxes.append((
+                x0, y0, x1, y1,
+                "IP_ADDRESS", valid_ip, None, "pdf_ip_fallback",
+            ))
+            break
 
     pdf_boxes = []
     for x0, y0, x1, y1, label, value, score, source in pixel_boxes:
