@@ -1,0 +1,112 @@
+# csv
+
+"王小明","allen123@gmail.com","高雄市楠梓區大學南路100號","資工系"
+"李小華","xiaohua@example.com","台北市信義區信義路五段7號","電機系"
+
+"王小明","我喜歡拉麵,壽司,咖哩","0912345678","學生"
+"李小華","Apple, Google, Microsoft","0922333444","工程師"
+
+"王小明","他說 ""Hello, Allen"" 給我聽","0912345678"
+"李小華","備註 ""VIP, Customer""","0922333444"
+
+"食物","價格","評價","分類"
+"拉麵","180","很好吃","日式"
+"漢堡","120","普通","美式"
+
+"王小明","A123456789","0912345678","allen123@gmail.com"
+"李小華","B223456789","0922333444","xiaohua@example.com"
+
+"使用者姓名是王小明","今年22歲","聯絡電話是0912345678","喜歡打電動"
+"我的名字叫李小華","今年21歲","Email是xiaohua@example.com","喜歡看電影"
+
+# 程式碼不要進行欄位切割
+
+___python___
+
+name = "王小明"
+phone = "0912345678"
+email = "allen123@gmail.com"
+
+print(name, phone, email)
+
+users = [
+    ["王小明", 22, "0912345678"],
+    ["李小華", 21, "0922333444"],
+]
+
+___javascript___
+
+const user = {
+    name: "王小明",
+    age: 22,
+    phone: "0912345678",
+    email: "allen123@gmail.com"
+};
+
+console.log(user.name, user.phone, user.email);
+
+___java___
+
+public class User {
+    public static void main(String[] args) {
+        String name = "王小明";
+        String phone = "0912345678";
+        String email = "allen123@gmail.com";
+
+        System.out.println(name);
+        System.out.println(phone);
+    }
+}
+
+___C/C++___
+
+#include <iostream>
+#include <string>
+
+int main() {
+    std::string name = "王小明";
+    std::string phone = "0912345678";
+
+    sendUser(name, phone, "allen123@gmail.com");
+
+    return 0;
+}
+
+___semicolon___
+
+王小明;22;資工系;0912345678
+李小華;21;電機系;0922333444
+
+___pipe___
+
+王小明 | 22 | 0912345678 | 學生
+李小華 | 21 | 0922333444 | 工程師
+
+___segmentation___
+
+"王小明","22","0912345678","學生"
+"李小華","21","0922333444","工程師"
+name = "陳大明"
+phone = "0933444555"
+print(name, phone)
+const userName = "林小美";
+const userPhone = "0966777888";
+console.log(userName, userPhone);
+public class User {
+    String name = "張小華";
+    String phone = "0955666777";
+    System.out.println(name);
+}
+#include <iostream>
+int main() {
+    std::string name = "黃小明";
+    std::string phone = "0977888999";
+    std::cout << name << std::endl;
+    return 0;
+}
+王大華;23;資工系;0988111222
+李大明;24;電機系;0933222111
+陳小美 | 25 | 0955111222 | 學生
+林小華 | 26 | 0966222333 | 工程師
+今天的天氣很好，我等等想去吃拉麵。
+這只是一段普通文字，不包含任何個人資料。
