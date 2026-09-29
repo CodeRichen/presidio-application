@@ -38,6 +38,9 @@
 安裝：pip install pywin32 psutil pyperclip pynput
       (另外依 handler_text/handler_code/handler_media 檔頭的說明安裝 presidio / tesseract / pymupdf)
 """
+
+import io
+import csv
 import os
 import re
 import time
@@ -63,6 +66,18 @@ HOTKEY_PASTE = '<ctrl>+<alt>+v'   # 單純貼上剪貼簿目前的內容，不�
 #         HOTKEY_COPY = '<ctrl>+c'
 #         HOTKEY_PASTE = None
 
+MASK_MODE = "field"
+# "exact" = 原本精確遮蔽
+# "line"  = 有 PII 就整行遮蔽
+# "field" = 有 PII 就只遮該欄位
+
+FIELD_FORMAT_CSV = "csv"
+FIELD_FORMAT_TSV = "tsv"
+FIELD_FORMAT_PIPE = "pipe"
+FIELD_FORMAT_SEMICOLON = "semicolon"
+FIELD_FORMAT_LINE = "line"
+FIELD_FORMAT_UNKNOWN = "unknown"
+
 DIRECT_MODE = not HOTKEY_PASTE  # 由上面兩行自動算出，下面邏輯都靠這個布林值分流，不用再改別的地方
 
 CODE_EXTENSIONS = {".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".rs",
@@ -72,6 +87,27 @@ TEXT_FILE_EXTENSIONS = {".txt", ".md", ".csv", ".log"}   # 純文字檔：讀出
 
 MAP_FILE = "./presidio/real/clipboard_map.txt"
 
+_log_callback = None
+_result_callback = None
+
+
+def set_log_callback(callback):
+    global _log_callback
+    _log_callback = callback
+
+
+def set_result_callback(callback):
+    global _result_callback
+    _result_callback = callback
+
+def debug_log(message):
+
+    # Terminal 照樣顯示
+    print(message)
+
+    # 如果 UI 有啟動，也送一份給 UI
+    if _log_callback is not None:
+        _log_callback(str(message))
 
 def heuristic_is_code(text: str) -> bool:
     """快速判斷一段文字像不像程式碼：命中越多程式碼特徵，越可能是程式碼。門檻(>=3)可自行調整。
@@ -235,6 +271,980 @@ def anonymize_text(text, mapping, is_code=None):
     save_map(mapping)
     return out
 
+# ============================================================
+# Field-level anonymization
+# ============================================================
+
+FIELD_MIN_SCORE = 0.70
+
+
+# ==================================================
+# 可以觸發整個 Field 遮蔽的 Entity 類型
+# ==================================================
+
+FIELD_SENSITIVE_ENTITIES = {
+    "PERSON",
+
+    "TW_PHONE",
+    "PHONE_NUMBER",
+
+    "EMAIL",
+    "EMAIL_ADDRESS",
+
+    "ADDRESS",
+    "LOCATION",
+
+    "TW_ID",
+
+    "CREDIT_CARD",
+    "US_BANK_NUMBER",
+    "BANK_ACCOUNT",
+
+    "US_SSN",
+    "DRIVER_LICENSE",
+    "PASSPORT",
+
+    "IP_ADDRESS",
+
+    "MEDICAL_RECORD",
+    "TAX_ID",
+    "INSURANCE_ID",
+}
+
+# 真正用來分隔「欄位」的符號。
+# 注意：
+#   ":" / "：" 不放進來，因為它們通常是 key:value 的內部分隔。
+#
+# 支援：
+#   |
+#   ,
+#   tab
+#   ;
+#   ；
+#
+# 換行會另外處理。
+
+
+FIELD_SEPARATOR_RE = re.compile(r"(\s*\|\s*|\t+|\s*,\s*|\s*[;；]\s*)")
+
+# block_type
+
+from dataclasses import dataclass
+
+@dataclass
+class TextBlock:
+    text: str
+    block_type: str
+
+BLOCK_CODE = "code"
+BLOCK_CSV = "csv"
+BLOCK_TSV = "tsv"
+BLOCK_PIPE = "pipe"
+BLOCK_SEMICOLON = "semicolon"
+BLOCK_TEXT = "text"
+BLOCK_BLANK = "blank"
+
+def has_strong_code_signal(text):
+    """
+    判斷一段文字是否有明顯程式碼特徵。
+    這裡只使用較強的 signal，
+    避免普通文字被誤判為 code。
+    """
+
+    code_patterns = [
+        # Python
+        r"^\s*def\s+\w+\s*\(",
+        r"^\s*class\s+\w+.*:",
+        r"^\s*(from|import)\s+\w+",
+        r"^\s*if\s+.+:",
+        r"^\s*for\s+.+:",
+        r"^\s*while\s+.+:",
+
+        # Java / C / C++
+        r"^\s*public\s+class\s+\w+",
+        r"^\s*(public|private|protected)\s+static\s+",
+        r"^\s*#include\s*[<\"]",
+        r"^\s*(int|void|double|float|char)\s+main\s*\(",
+        r"\bSystem\.out\.println\s*\(",
+        r"\bstd::",
+
+        # JavaScript
+        r"^\s*(const|let|var)\s+\w+\s*=",
+        r"\bconsole\.log\s*\(",
+
+        # common function call / assignment
+        r"^\s*\w+\s*=\s*[\"'\[\{\d]",
+    ]
+
+    for pattern in code_patterns:
+        if re.search(pattern, text, re.MULTILINE):
+            return True
+
+    # braces + programming syntax
+    if "{" in text and "}" in text:
+        if "=" in text or ";" in text or "(" in text:
+            return True
+
+    return False
+
+def classify_block(text):
+    if not text.strip():
+        return BLOCK_BLANK
+
+    # -----------------------------------
+    # 1. 強程式碼訊號優先
+    # -----------------------------------
+    if has_strong_code_signal(text):
+        return BLOCK_CODE
+
+    # -----------------------------------
+    # 2. 結構化資料
+    # -----------------------------------
+    fmt = detect_field_format(text)
+
+    if fmt == FIELD_FORMAT_CSV:
+        return BLOCK_CSV
+
+    if fmt == FIELD_FORMAT_TSV:
+        return BLOCK_TSV
+
+    if fmt == FIELD_FORMAT_PIPE:
+        return BLOCK_PIPE
+
+    if fmt == FIELD_FORMAT_SEMICOLON:
+        return BLOCK_SEMICOLON
+
+    # -----------------------------------
+    # 3. 普通文字
+    # -----------------------------------
+    return BLOCK_TEXT
+
+def segment_text(text):
+    """
+    先利用空白行切成 logical blocks，
+    再分別判斷每個 block 的類型。
+    """
+
+    blocks = []
+
+    # 保留空白行，之後才能重組原文
+    parts = re.split(r"(\r?\n\s*\r?\n)", text)
+
+    for part in parts:
+        if not part:
+            continue
+
+        if re.fullmatch(r"\r?\n\s*\r?\n", part):
+            blocks.append(
+                TextBlock(
+                    text=part,
+                    block_type=BLOCK_BLANK
+                )
+            )
+            continue
+
+        block_type = classify_block(part)
+
+        blocks.append(
+            TextBlock(
+                text=part,
+                block_type=block_type
+            )
+        )
+
+    return blocks
+
+def anonymize_segmented_text(text, mapping):
+    blocks = segment_text_v2(text)
+
+    output = []
+    changed = False
+
+    print("\n========== SEGMENTATION ==========")
+
+    for i, block in enumerate(blocks):
+
+        preview = block.text.strip().replace("\n", " ")[:60]
+
+        debug_log(
+            f"[BLOCK {i}] "
+            f"type={block.block_type} "
+            f"| {preview!r}"
+        )
+
+        # -----------------------------------
+        # 空白
+        # -----------------------------------
+        if block.block_type == BLOCK_BLANK:
+            output.append(block.text)
+            continue
+
+        result = None
+
+        # -----------------------------------
+        # CODE
+        # -----------------------------------
+        if block.block_type == BLOCK_CODE:
+
+            result = anonymize_text(
+                block.text,
+                mapping,
+                is_code=True
+            )
+
+        # -----------------------------------
+        # structured field data
+        # -----------------------------------
+        elif block.block_type in {
+            BLOCK_CSV,
+            BLOCK_TSV,
+            BLOCK_PIPE,
+            BLOCK_SEMICOLON,
+        }:
+
+            result = anonymize_fields(
+                block.text,
+                mapping,
+                is_code=False
+            )
+
+        # -----------------------------------
+        # normal text
+        # -----------------------------------
+        else:
+
+            result = anonymize_text(
+                block.text,
+                mapping,
+                is_code=False
+            )
+
+        if result is None:
+            output.append(block.text)
+
+        else:
+            output.append(result)
+            changed = True
+
+    if not changed:
+        return None
+
+    save_map(mapping)
+
+    result = "".join(output)
+
+    if _result_callback is not None:
+        _result_callback(result)
+
+    return result
+
+def classify_line(line):
+    """
+    對單一行進行初步分類。
+    """
+
+    stripped = line.strip()
+
+    if not stripped:
+        return BLOCK_BLANK
+
+    # ------------------------------
+    # 1. 強程式碼特徵
+    # ------------------------------
+    if has_strong_code_signal(line):
+        return BLOCK_CODE
+
+    # ------------------------------
+    # 2. TSV
+    # ------------------------------
+    if "\t" in line:
+        return BLOCK_TSV
+
+    # ------------------------------
+    # 3. PIPE
+    # ------------------------------
+    if "|" in line:
+        return BLOCK_PIPE
+
+    # ------------------------------
+    # 4. CSV
+    # ------------------------------
+    try:
+        row = next(csv.reader([line]))
+
+        if len(row) >= 3:
+            return BLOCK_CSV
+
+    except csv.Error:
+        pass
+
+    # ------------------------------
+    # 5. Semicolon
+    # ------------------------------
+    try:
+        row = next(
+            csv.reader(
+                [line],
+                delimiter=";"
+            )
+        )
+
+        if len(row) >= 3:
+            return BLOCK_SEMICOLON
+
+    except csv.Error:
+        pass
+
+    return BLOCK_TEXT
+
+def is_code_continuation(line):
+    """
+    判斷一行是否很像前一個 code block 的延續。
+
+    注意：
+    這個函式不能單獨決定它是不是 code，
+    必須搭配上一行已經是 CODE 的 context 使用。
+    """
+
+    stripped = line.strip()
+
+    if not stripped:
+        return False
+
+    patterns = [
+    # function call
+    r"^[A-Za-z_]\w*\s*\(.*\)\s*;?$",
+
+    # object.method(...)
+    r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+\s*\(.*\)\s*;?$",
+
+    # Java / C / C++ typed variable declaration
+    r"^(?:String|int|long|double|float|boolean|char|byte|short)\s+\w+\s*(?:=.*)?;?$",
+
+    # return
+    r"^return\b.*;?$",
+
+    # break / continue
+    r"^(break|continue)\s*;?$",
+
+    # closing syntax
+    r"^[}\]\)]+\s*;?,?$",
+
+    # else / catch / finally
+    r"^(else|finally)\b",
+    r"^catch\s*\(",
+]
+
+    return any(
+        re.match(pattern, stripped)
+        for pattern in patterns
+    )
+
+def segment_text_v2(text):
+    """
+    Line-level segmentation。
+
+    1. 每一行先分類
+    2. 相鄰相同類型合併成同一個 block
+    3. 保留換行
+    """
+
+    lines = text.splitlines(keepends=True)
+
+    blocks = []
+
+    current_type = None
+    current_lines = []
+
+    def flush():
+        nonlocal current_type
+        nonlocal current_lines
+
+        if not current_lines:
+            return
+
+        blocks.append(
+            TextBlock(
+                text="".join(current_lines),
+                block_type=current_type
+            )
+        )
+
+        current_type = None
+        current_lines = []
+
+    for line in lines:
+
+        raw_type = classify_line(line)
+        line_type = raw_type
+
+        # ==========================================
+        # Context-aware smoothing
+        # ==========================================
+
+        if (
+            raw_type == BLOCK_TEXT
+            and current_type == BLOCK_CODE
+            and is_code_continuation(line)
+        ):
+            line_type = BLOCK_CODE
+
+            print(
+                f"[SMOOTH] TEXT -> CODE | "
+                f"{line.rstrip()!r}"
+            )
+
+        debug_log(
+            f"[LINE TYPE] "
+            f"{line_type:<10} | "
+            f"{line.rstrip()!r}"
+        )
+
+        # --------------------------
+        # 空白行自己成為 boundary
+        # --------------------------
+        if line_type == BLOCK_BLANK:
+
+            flush()
+
+            blocks.append(
+                TextBlock(
+                    text=line,
+                    block_type=BLOCK_BLANK
+                )
+            )
+
+            continue
+
+        # --------------------------
+        # 第一行
+        # --------------------------
+        if current_type is None:
+
+            current_type = line_type
+            current_lines.append(line)
+
+            continue
+
+        # --------------------------
+        # 與上一行同類型
+        # --------------------------
+        if line_type == current_type:
+
+            current_lines.append(line)
+
+            continue
+
+        # --------------------------
+        # 類型改變 → block boundary
+        # --------------------------
+        flush()
+
+        current_type = line_type
+        current_lines.append(line)
+
+    flush()
+
+    return blocks
+
+def _is_reliable_field_match(match):
+    """
+    判斷偵測結果是否足以觸發整個 field 遮蔽。
+    """
+
+    start, end, label, score, source = match
+
+    # 1. 不是敏感類型 -> 不遮
+    if label not in FIELD_SENSITIVE_ENTITIES:
+        return False
+
+    # 2. Regex 命中 -> 直接接受
+    if source == "regex":
+        return True
+
+    # 3. NLP 模型需要達到 threshold
+    if score is not None and score >= FIELD_MIN_SCORE:
+        return True
+
+    return False
+
+
+def _next_field_tag(mapping):
+    """
+    找下一個可用的 <SENSITIVE_FIELD_n>。
+
+    例如 mapping 已經有：
+        <SENSITIVE_FIELD_1>
+        <SENSITIVE_FIELD_2>
+
+    就回傳：
+        <SENSITIVE_FIELD_3>
+    """
+    index = 1
+
+    while f"<SENSITIVE_FIELD_{index}>" in mapping:
+        index += 1
+
+    return f"<SENSITIVE_FIELD_{index}>"
+
+def _anonymize_single_field(field, mapping):
+    """
+    處理單一欄位。
+
+    有可靠 PII：
+        姓名：王小明
+            ↓
+        <SENSITIVE_FIELD_1>
+
+    沒有 PII：
+        興趣：打電動
+            ↓
+        興趣：打電動
+    """
+
+    # 空欄位不處理
+    if not field or not field.strip():
+        return field, False
+
+    matches = handler_text.detect(field)
+
+    # Debug
+    debug_log(f"\n[FIELD] {field}")
+
+    for start, end, label, score, source in matches:
+        debug_log(
+            f"  偵測到: '{field[start:end]}'"
+            f" | label={label}"
+            f" | score={score}"
+            f" | source={source}"
+        )
+
+    # 過濾掉低信心模型結果
+    reliable_matches = [
+        m for m in matches
+        if _is_reliable_field_match(m)
+    ]
+
+    if not reliable_matches:
+        return field, False
+
+    # 建立新的 field tag
+    tag = _next_field_tag(mapping)
+
+    # 注意：
+    # mapping 要保存完整 field，
+    # 這樣 deanonymize_text() 才能整欄還原。
+    mapping[tag] = field
+
+    return tag, True
+
+
+
+def detect_field_format(text):
+    """
+    判斷 clipboard 文字的欄位格式。
+
+    支援：
+        TSV
+        PIPE
+        CSV
+        SEMICOLON
+        LINE
+        UNKNOWN
+
+    CSV 判斷：
+    - 多行：每一行欄數一致且 > 1
+    - 單行：至少 3 個欄位（2 個逗號）
+    """
+    print("\n===== FORMAT DEBUG =====")
+    print("repr(text):", repr(text))
+    print("contains TAB:", "\t" in text)
+    print("TAB count:", text.count("\t"))
+    print("========================")
+
+    lines = [line for line in text.splitlines() if line.strip()]
+
+    if not lines:
+        return FIELD_FORMAT_UNKNOWN
+
+    # ==================================================
+    # 1. TSV / Excel
+    # ==================================================
+
+    if any("\t" in line for line in lines):
+        return FIELD_FORMAT_TSV
+
+    # ==================================================
+    # 2. Pipe
+    # ==================================================
+
+    if any("|" in line for line in lines):
+        return FIELD_FORMAT_PIPE
+
+    # ==================================================
+    # 3. CSV
+    # ==================================================
+
+    try:
+        rows = list(
+            csv.reader(
+                io.StringIO(text)
+            )
+        )
+
+        rows = [
+            row for row in rows
+            if row
+        ]
+
+        if rows:
+
+            column_counts = [
+                len(row)
+                for row in rows
+            ]
+
+            # ------------------------------
+            # 多行 CSV
+            # ------------------------------
+
+            if len(rows) >= 2:
+
+                if (
+                    min(column_counts) > 1
+                    and len(set(column_counts)) == 1
+                ):
+                    return FIELD_FORMAT_CSV
+
+            # ------------------------------
+            # 單行 CSV
+            # ------------------------------
+
+            elif len(rows) == 1:
+
+                # 至少三個欄位才視為 CSV
+                #
+                # 王小明,22,0912345678
+                # -> 3 fields -> CSV
+                #
+                # Hello, my name is Allen
+                # -> 2 fields -> 不算 CSV
+
+                if len(rows[0]) >= 3:
+                    return FIELD_FORMAT_CSV
+
+    except csv.Error:
+        pass
+
+    # ==================================================
+    # 4. Semicolon
+    # ==================================================
+
+    try:
+        rows = list(
+            csv.reader(
+                io.StringIO(text),
+                delimiter=";"
+            )
+        )
+
+        rows = [
+            row for row in rows
+            if row
+        ]
+
+        if rows:
+
+            column_counts = [
+                len(row)
+                for row in rows
+            ]
+
+            # 多行
+            if len(rows) >= 2:
+
+                if (
+                    min(column_counts) > 1
+                    and len(set(column_counts)) == 1
+                ):
+                    return FIELD_FORMAT_SEMICOLON
+
+            # 單行
+            elif len(rows) == 1:
+
+                if len(rows[0]) >= 3:
+                    return FIELD_FORMAT_SEMICOLON
+
+    except csv.Error:
+        pass
+
+    # ==================================================
+    # 5. 普通文字
+    # ==================================================
+
+    return FIELD_FORMAT_LINE
+
+def _split_fields_by_format(line, field_format):
+    """
+    根據 detect_field_format() 的結果切割單一行。
+
+    回傳：
+        [
+            field,
+            separator,
+            field,
+            separator,
+            ...
+        ]
+
+    separator 會保留，方便後面重新組合。
+    """
+
+    # ------------------------------------------
+    # TSV / Excel
+    # ------------------------------------------
+    if field_format == FIELD_FORMAT_TSV:
+        return re.split(r"(\t+)", line)
+
+    # ------------------------------------------
+    # Pipe
+    # ------------------------------------------
+    if field_format == FIELD_FORMAT_PIPE:
+        return re.split(r"(\s*\|\s*)", line)
+
+    # ------------------------------------------
+    # CSV
+    # ------------------------------------------
+    if field_format == FIELD_FORMAT_CSV:
+        try:
+            fields = next(csv.reader([line]))
+
+            parts = []
+
+            for i, field in enumerate(fields):
+                if i > 0:
+                    parts.append(",")
+
+                parts.append(field)
+
+            return parts
+
+        except (csv.Error, StopIteration):
+            return [line]
+
+    # ------------------------------------------
+    # Semicolon
+    # ------------------------------------------
+    if field_format == FIELD_FORMAT_SEMICOLON:
+        try:
+            fields = next(
+                csv.reader(
+                    [line],
+                    delimiter=";"
+                )
+            )
+
+            parts = []
+
+            for i, field in enumerate(fields):
+                if i > 0:
+                    parts.append(";")
+
+                parts.append(field)
+
+            return parts
+
+        except (csv.Error, StopIteration):
+            return [line]
+
+    # ------------------------------------------
+    # LINE / UNKNOWN
+    # ------------------------------------------
+    # 普通文字完全不按照 , ; | 等符號切割
+    return [line]
+
+def _anonymize_csv(text, mapping, delimiter=","):
+    """
+    使用 Python csv 模組處理 CSV，
+    避免 quoted field 裡面的逗號被錯誤切割。
+    """
+
+    input_stream = io.StringIO(text)
+
+    reader = csv.reader(
+        input_stream,
+        delimiter=delimiter
+    )
+
+    output_stream = io.StringIO(
+        newline=""
+    )
+
+    writer = csv.writer(
+        output_stream,
+        delimiter=delimiter,
+        lineterminator="\n"
+    )
+
+    changed = False
+
+    for row in reader:
+
+        new_row = []
+
+        for field in row:
+
+            masked_field, field_changed = (
+                _anonymize_single_field(
+                    field,
+                    mapping
+                )
+            )
+
+            new_row.append(masked_field)
+
+            if field_changed:
+                changed = True
+
+        writer.writerow(new_row)
+
+    if not changed:
+        return None
+
+    return output_stream.getvalue()
+
+def anonymize_fields(text, mapping, is_code=None):
+
+    print("\n========== ANONYMIZE_FIELDS ==========")
+
+    field_format = detect_field_format(text)
+
+    print(f"[FIELD FORMAT] {field_format}")
+    print(f"[INPUT is_code] {is_code}")
+
+    # 只有 LINE / UNKNOWN 才做 code detection
+    if field_format in (
+        FIELD_FORMAT_LINE,
+        FIELD_FORMAT_UNKNOWN
+    ):
+
+        if is_code is None:
+            is_code = is_code_text(text)
+
+        print(f"[CODE DETECTION] {is_code}")
+
+        if is_code:
+            print("[ROUTE] CODE -> anonymize_text()")
+
+            return anonymize_text(
+                text,
+                mapping,
+                is_code=True
+            )
+
+    # CSV
+    if field_format == FIELD_FORMAT_CSV:
+
+        print("[ROUTE] CSV -> _anonymize_csv()")
+
+        result = _anonymize_csv(
+            text,
+            mapping,
+            delimiter=","
+        )
+
+        if result is not None:
+            save_map(mapping)
+
+        return result
+
+    # Semicolon
+    if field_format == FIELD_FORMAT_SEMICOLON:
+
+        print("[ROUTE] SEMICOLON -> _anonymize_csv()")
+
+        result = _anonymize_csv(
+            text,
+            mapping,
+            delimiter=";"
+        )
+
+        if result is not None:
+            save_map(mapping)
+
+        return result
+
+    print(
+        f"[ROUTE] {field_format} "
+        "-> normal field processing"
+    )
+
+    # ==========================================
+    # 以下保持你原本 TSV / PIPE / LINE 的程式
+    # ==========================================
+
+    lines = text.splitlines(keepends=True)
+
+    output = []
+    changed = False
+
+    for line in lines:
+
+        if line.endswith("\r\n"):
+            content = line[:-2]
+            newline = "\r\n"
+
+        elif line.endswith("\n"):
+            content = line[:-1]
+            newline = "\n"
+
+        elif line.endswith("\r"):
+            content = line[:-1]
+            newline = "\r"
+
+        else:
+            content = line
+            newline = ""
+
+        if not content.strip():
+            output.append(line)
+            continue
+
+        parts = _split_fields_by_format(
+            content,
+            field_format
+        )
+
+        new_parts = []
+
+        for i, part in enumerate(parts):
+
+            if i % 2 == 1:
+                new_parts.append(part)
+                continue
+
+            masked_field, field_changed = (
+                _anonymize_single_field(
+                    part,
+                    mapping
+                )
+            )
+
+            new_parts.append(masked_field)
+
+            if field_changed:
+                changed = True
+
+        output.append(
+            "".join(new_parts) + newline
+        )
+
+    if not changed:
+        return None
+
+    save_map(mapping)
+
+    return "".join(output)
 
 def deanonymize_text(text, mapping):
     return TAG_RE.sub(lambda m: mapping.get(m.group(0), m.group(0)), text)
@@ -390,11 +1400,15 @@ def on_copy(mapping):
             print("[結果] 未偵測到需要遮蔽的內容" + ("，剪貼簿維持原生複製的內容不變" if DIRECT_MODE else ""))
     else:
         if TAG_RE.search(content):
+            #已經有 tag -> 還原
             print("[分類] 內容含標籤 -> 還原模式")
             result = deanonymize_text(content, mapping)
         else:
             # 這裡沒有檔名可判斷，anonymize_text 內部才會用 is_code_text() 猜測
-            result = anonymize_text(content, mapping)
+            if MASK_MODE == "field":
+                result = anonymize_segmented_text(content, mapping)
+            else:
+                result = anonymize_text(content, mapping)
         if result and result != content:
             if DIRECT_MODE:
                 pyperclip.copy(result)  # 直接覆寫：舊的原始文字被新的遮蔽/還原後文字取代
@@ -454,36 +1468,46 @@ def _guarded(func):
     return wrapper
 
 
-def start_listener():
+def create_listener():
     mapping = load_map()
-    print("【監聽啟動】" + ("(模式 B：Ctrl+C 直接模式)" if DIRECT_MODE else "(模式 A：專屬快速鍵)"))
-    if DIRECT_MODE:
-        print(f"  - {HOTKEY_COPY} : 直接複製，程式自動判斷遮蔽/還原，並直接覆寫剪貼簿成處理後的版本")
-        print("  - Ctrl+V (原生) : 貼出剪貼簿目前的內容，也就是已經處理過的版本，不需要另外設定快速鍵")
-        print("提醒：Ctrl+C 已被全域攔截，若終端機視窗按 Ctrl+C 無法正常中止腳本，直接關閉終端機視窗即可\n")
-    else:
-        print(f"  - {HOTKEY_COPY} : 有標籤就還原、沒標籤就自動遮蔽（只會產生覆蓋結果，不會動剪貼簿）")
-        print(f"  - {HOTKEY_PASTE} : 貼上覆蓋結果(文字/檔案)，貼完立刻把剪貼簿還原成原始內容；沒有覆蓋結果就單純貼上目前剪貼簿內容")
-        print("  - Ctrl+V : 系統原生貼上，完全不受這支程式影響")
-        print("在終端機視窗按 Ctrl+C 可停止腳本\n")
 
-    hotkeys = {HOTKEY_COPY: _guarded(lambda: on_copy(mapping))}
+    hotkeys = {
+        HOTKEY_COPY:
+            _guarded(lambda: on_copy(mapping))
+    }
+
     if not DIRECT_MODE:
-        hotkeys[HOTKEY_PASTE] = _guarded(lambda: on_paste(mapping))
+        hotkeys[HOTKEY_PASTE] = _guarded(
+            lambda: on_paste(mapping)
+        )
 
     listener = keyboard.GlobalHotKeys(hotkeys)
     listener.start()
+
+    return listener
+
+def start_listener():
+    listener = create_listener()
+
+    print(
+        "【監聽啟動】"
+        + (
+            "(模式 B：Ctrl+C 直接模式)"
+            if DIRECT_MODE
+            else "(模式 A：專屬快速鍵)"
+        )
+    )
+
     try:
-        # 用短暫輪詢取代 listener.join()：join() 會整個卡住主執行緒，
-        # 導致 Ctrl+C 的 KeyboardInterrupt 傳不進來、程式關不掉。
         while listener.running:
             time.sleep(0.2)
+
     except KeyboardInterrupt:
         print("\n[結束] 收到中斷信號，正在關閉監聽...")
+
     finally:
         listener.stop()
         cleanup_map_files()
-
 
 if __name__ == "__main__":
     start_listener()

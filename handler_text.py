@@ -21,6 +21,12 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Tuple
 
+EN_NER_LABELS = {
+    "PERSON",
+    "ORGANIZATION",
+    "LOCATION",
+}
+
 # ---------- 英文：走 Presidio，含內建的規則式辨識器 (SSN/IBAN/信用卡/加密貨幣錢包/IP) + spaCy 英文 NER ----------
 try:
     from presidio_analyzer import AnalyzerEngine
@@ -169,7 +175,7 @@ RULES = [
     Rule("EMAIL", _L + r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}" + _R),
     Rule("CREDIT_CARD", _L + r"(?:\d[ -]?){13,19}" + _R, validator=luhn_valid),
     Rule("URL", _L + r"https?://[^\s\"'<>]+"),
-    Rule("FILE_NAME", _L + rf"[\w\-. ]+?\.(?:{FILE_EXTENSIONS})" + _R, flags=re.IGNORECASE),
+    Rule("FILE_NAME",_L + rf"[\w\-. ]+?\.(?:{FILE_EXTENSIONS})(?!\s*\()" + _R,flags=re.IGNORECASE),
     Rule("CREDENTIAL_LIKE",
          _L + r"(?=[A-Za-z0-9]{8,29}(?![A-Za-z0-9]))(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]{8,29}" + _R),
     Rule("GENERIC_SECRET",
@@ -220,15 +226,28 @@ def _run_rules(text: str, compiled=None) -> List[Tuple[int, int, str, Optional[f
     return matches
 
 
-def presidio_matches(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
-    """先永遠跑一次英文那組 (Presidio 內建的規則式辨識器如 SSN/IBAN/信用卡/加密貨幣錢包/IP
+""" def presidio_matches(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
+    先永遠跑一次英文那組 (Presidio 內建的規則式辨識器如 SSN/IBAN/信用卡/加密貨幣錢包/IP
     幾乎都只註冊在 language="en" 底下，不管文字裡有沒有中文都要跑，不然這些規則等於形同虛設)，
-    偵測到中文再疊加一次中文 NER 判斷人名/地名/機構名 (不經過 Presidio/spaCy)"""
+    偵測到中文再疊加一次中文 NER 判斷人名/地名/機構名 (不經過 Presidio/spaCy)
     matches = NLP_MODELS["en"](text)
     if contains_chinese(text):
         matches += NLP_MODELS["zh"](text)
-    return matches
+    return matches """
 
+def presidio_matches(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
+    en_matches = NLP_MODELS["en"](text)
+
+    if contains_chinese(text):
+        # 中文文字中，不採用英文 spaCy NER 容易誤判的語意型實體
+        en_matches = [
+            m for m in en_matches
+            if m[2] not in EN_NER_LABELS
+        ]
+
+        en_matches += NLP_MODELS["zh"](text)
+
+    return en_matches
 
 def detect(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
     """main.py 呼叫的入口：回傳這段文字裡所有敏感資訊的 (start, end, label, score, source)，

@@ -1,9 +1,19 @@
 """
-程式碼敏感資訊偵測規則：API Key、JWT、檔案路徑等。
-程式碼裡也常混著電話/信用卡/URL/密碼這類個資，所以 detect() 會借用 handler_text 的規則一起跑，
-但不跑 Presidio 模型（程式碼上下文用不太到、也容易誤判），所以這裡回傳的每一筆 source 都固定是
-"regex"（詳見 handler_text._run_rules 的說明）。
-想加規則：在 RULES 加一行 Rule(...) 即可。
+程式碼敏感資訊偵測。
+
+偵測來源：
+1. 程式碼專屬 Regex：
+   API Key、JWT、檔案路徑等。
+
+2. handler_text 的一般 PII Regex：
+   電話、Email、信用卡、URL、身分證等。
+
+3. 中文 NER：
+   僅允許特定敏感 Entity（例如 PERSON），
+   用來偵測程式碼字串中的中文個資。
+
+程式碼模式不執行完整英文 Presidio NLP，
+避免程式碼語法被誤判為 LOCATION、PERSON 等 Entity。
 """
 import re
 from dataclasses import dataclass
@@ -32,9 +42,56 @@ RULES = [
 ]
 _COMPILED = [(r.name, re.compile(r.pattern, r.flags), r.validator) for r in RULES]
 
+CODE_ZH_ALLOWED_ENTITIES = {
+    "PERSON",
+}
 
 def detect(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
-    """main.py 呼叫的入口：程式碼專屬規則 + handler_text 的個資規則一起跑。
-    回傳 (start, end, label, score, source)，這裡全部都是純正則比對，score 固定 None、
-    source 固定 "regex"（不跑 Presidio/中文 NER，見檔頭說明）。"""
-    return handler_text._run_rules(text, _COMPILED) + handler_text._run_rules(text)
+    """
+    程式碼敏感資訊偵測：
+
+    1. 程式碼專屬 Regex
+    2. handler_text 的一般 PII Regex
+    3. 中文 NER（只允許特定敏感 entity）
+
+    不執行英文 Presidio，
+    避免程式碼語法被誤判成 LOCATION / PERSON 等。
+    """
+
+    results = []
+
+    # ==========================================
+    # 1. Code-specific regex
+    # ==========================================
+
+    results.extend(
+        handler_text._run_rules(
+            text,
+            _COMPILED
+        )
+    )
+
+    # ==========================================
+    # 2. 一般 PII regex
+    # ==========================================
+
+    results.extend(
+        handler_text._run_rules(text)
+    )
+
+    # ==========================================
+    # 3. Chinese NER
+    # ==========================================
+
+    zh_results = handler_text.zh_ner(text)
+
+    for match in zh_results:
+
+        start, end, label, score, source = match
+
+        if label not in CODE_ZH_ALLOWED_ENTITIES:
+            continue
+
+        results.append(match)
+
+    return results
