@@ -36,6 +36,7 @@ import base64
 import json
 import tempfile
 import asyncio
+import re
 from typing import List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
@@ -333,12 +334,292 @@ def _build_phone_normalized_ocr_line(line_words: List[dict]):
     return text, offsets
 
 
+
+def _append_compact_span_box(boxes, offsets, text, start, end, label, scale=1.0, source="field_regex"):
+    """把 compact OCR 文字中的指定 span 映射回實際 OCR word bbox。"""
+    hit_words = [w for s, e, w in offsets if s < end and e > start]
+    if not hit_words:
+        return
+
+    x0 = min(w["left"] for w in hit_words)
+    y0 = min(w["top"] for w in hit_words)
+    x1 = max(w["left"] + w["width"] for w in hit_words)
+    y1 = max(w["top"] + w["height"] for w in hit_words)
+    if scale != 1.0:
+        x0 /= scale; y0 /= scale; x1 /= scale; y1 /= scale
+
+    boxes.append((x0, y0, x1, y1, label, text[start:end], None, source))
+
+
+def _add_field_aware_boxes(line_words, boxes, scale=1.0):
+    """
+    針對有明確欄位名稱的文件補完整 bbox。
+
+    目的不是猜測 OCR 遺失字元，而是利用「出生日期為 / 住院期間為 / 開戶銀行為 /
+    案件編號為 / 承辦單位於」等欄位名稱，將已 OCR 出來但被 NER 切碎的敏感值完整遮蔽。
+    """
+    text, offsets = _build_compact_ocr_line(line_words)
+
+    # 圖片 OCR 欄位型 PII 補救。
+    # 只在明確欄位名稱存在時擴張 bbox，避免把一般文字誤遮。
+
+    # 姓名：Windows OCR 常把中文姓名拆成單字，NER 可能只抓到首尾字。
+    m = re.search(r"姓名[:：]?[「\"']?(?P<value>[\u3400-\u9fff]{2,4})", text)
+    if m:
+        _append_compact_span_box(
+            boxes, offsets, text,
+            m.start("value"), m.end("value"),
+            "PERSON", scale,
+            source="field_regex_person",
+        )
+
+    # 地址：補救 detector 從第二個字才開始命中的情況。
+    # 除了 regex span 外，再以明確「地址」欄位的 OCR word 邊界取值，
+    # 避免低解析度時第一個地址字（例如「高」）落在既有 ADDRESS bbox 外。
+    m = re.search(r"地址[:：]?[「\"']?(?P<value>[^，,。；;]{4,40})", text)
+    if m:
+        value = m.group("value")
+        if any(token in value for token in ("市", "縣", "區", "鄉", "鎮", "路", "街", "號")):
+            _append_compact_span_box(
+                boxes, offsets, text,
+                m.start("value"), m.end("value"),
+                "ADDRESS", scale,
+                source="field_regex_address",
+            )
+
+    # 低解析度欄位補救：只在同一 OCR 行明確出現「地址」時啟用。
+    # 找到欄位名稱結束位置後，直接從第一個非冒號 word 開始建立 ADDRESS bbox。
+    # 這裡不向左任意擴張，因此不會把「地址：」本身遮掉。
+    field_end = None
+    for i, (_s, _e, w) in enumerate(offsets):
+        if w["text"] == "地址":
+            field_end = i + 1
+            break
+        if i + 1 < len(offsets) and w["text"] == "地" and offsets[i + 1][2]["text"] == "址":
+            field_end = i + 2
+            break
+
+    if field_end is not None:
+        value_words = []
+        for _s, _e, w in offsets[field_end:]:
+            token = w["text"].strip()
+            if token in {":", "："}:
+                continue
+            if not token:
+                continue
+            value_words.append(w)
+
+        joined_value = "".join(w["text"] for w in value_words)
+        if (
+            len(joined_value) >= 4
+            and any(token in joined_value for token in ("市", "縣", "區", "鄉", "鎮", "路", "街", "號"))
+        ):
+            x0 = min(w["left"] for w in value_words)
+            y0 = min(w["top"] for w in value_words)
+            x1 = max(w["left"] + w["width"] for w in value_words)
+            y1 = max(w["top"] + w["height"] for w in value_words)
+
+            # 低解析度 OCR 可能完全漏掉地址第一個字。
+            # 例如原圖「地址：高雄市...」只辨識成「地址：雄市...」。
+            # 此時不能重建遺失文字，但可以利用「欄位分隔符 -> 第一個值 word」
+            # 的異常空隙，把可能漏掉的敏感字所在區域一併納入遮蔽。
+            #
+            # 正常字距約為單一中文字寬度的一小部分；若 gap 大於
+            # 第一個已辨識值 word 寬度的 0.9 倍，視為可能漏掉一個字。
+            # 左界只回補到分隔符右側，不會遮掉「地址」欄位名稱。
+            first_value = value_words[0]
+            separator_word = offsets[field_end - 1][2] if field_end > 0 else None
+
+            # field_end 指向「地址」後；若下一個 OCR word 是冒號，使用冒號作為 separator。
+            if field_end < len(offsets):
+                maybe_sep = offsets[field_end][2]
+                if maybe_sep["text"].strip() in {":", "："}:
+                    separator_word = maybe_sep
+
+            if separator_word is not None:
+                sep_right = separator_word["left"] + separator_word["width"]
+                gap = first_value["left"] - sep_right
+                first_width = max(first_value["width"], 1.0)
+
+                if gap >= first_width * 0.9:
+                    # 留一點正常欄位間距，避免黑框直接貼住冒號。
+                    normal_gap = min(first_width * 0.35, 6.0)
+                    x0 = max(sep_right + normal_gap, 0.0)
+
+            if scale != 1.0:
+                x0 /= scale; y0 /= scale; x1 /= scale; y1 /= scale
+            boxes.append((
+                x0, y0, x1, y1,
+                "ADDRESS", joined_value, None, "field_word_address",
+            ))
+
+    # IP：OCR 可能把 IPv4 點號讀成「· / 丄 / 工」甚至直接吞掉。
+    # 不猜回遺失的點號；只在明確 IP 欄位中遮蔽 OCR 已辨識出的數字型值。
+    m = re.search(r"(?i)(?:^|[^A-Za-z])IP[:：·.]?(?P<value>[0-9·.丄工]+)$", text)
+    if m:
+        value = m.group("value")
+        digit_count = sum(ch.isdigit() for ch in value)
+        if 7 <= digit_count <= 12:
+            _append_compact_span_box(
+                boxes, offsets, text,
+                m.start("value"), m.end("value"),
+                "IP_ADDRESS", scale,
+                source="field_regex_ip",
+            )
+
+    # 完整日期：避免 Presidio 只回傳年份或日期的一小段。
+    date_pat = r"(?:19|20)\d{2}年\d{1,2}月\d{1,2}日"
+
+    # 出生日期：只取「出生日期為」後的完整日期。
+    m = re.search(r"出生日期為[「\"']?(?P<value>" + date_pat + r")", text)
+    if m:
+        _append_compact_span_box(boxes, offsets, text, m.start("value"), m.end("value"),
+                                 "DATE_OF_BIRTH", scale)
+
+    # 住院期間：兩個日期分別建立 bbox，刻意保留中間的「至」。
+    m = re.search(r"住院期間為[「\"']?(?P<start>" + date_pat + r")至(?P<end>" + date_pat + r")", text)
+    if m:
+        _append_compact_span_box(boxes, offsets, text, m.start("start"), m.end("start"),
+                                 "DATE_TIME", scale)
+        _append_compact_span_box(boxes, offsets, text, m.start("end"), m.end("end"),
+                                 "DATE_TIME", scale)
+
+    # 申請日期：同樣遮完整年月日。
+    m = re.search(r"申請日期為[「\"']?(?P<value>" + date_pat + r")", text)
+    if m:
+        _append_compact_span_box(boxes, offsets, text, m.start("value"), m.end("value"),
+                                 "DATE_TIME", scale)
+
+    # 銀行名稱：依欄位邊界取值，不把所有 ORGANIZATION 一律視為敏感資訊。
+    m = re.search(r"開戶銀行為(?P<value>[^，,。；;]{2,30}?分行)", text)
+    if m:
+        _append_compact_span_box(boxes, offsets, text, m.start("value"), m.end("value"),
+                                 "BANK_NAME", scale)
+
+    # 案件編號：欄位值整段遮蔽。即使 OCR 把最後一碼辨錯，也不讓 CLM/尾碼外露。
+    m = re.search(
+        r"(?:理賠)?案件編號為(?P<value>CLM[-一](?:19|20)\d{2}[-一]\d{6}[0-9丆])",
+        text,
+        re.IGNORECASE,
+    )
+    if m:
+        _append_compact_span_box(boxes, offsets, text, m.start("value"), m.end("value"),
+                                 "CASE_NUMBER", scale)
+
+    # 承辦單位地址：只遮「於」後到「收件」前的地址，不把「承辦單位於」一起遮掉。
+    m = re.search(r"承辦單位於(?P<value>.+?)(?=收件|並登錄|，|,|。)", text)
+    if m and any(token in m.group("value") for token in ("市", "縣", "區", "鄉", "鎮", "路", "街", "號")):
+        _append_compact_span_box(boxes, offsets, text, m.start("value"), m.end("value"),
+                                 "ADDRESS", scale)
+
+
+def _add_person_title_boxes(line_words, boxes, scale=1.0):
+    """
+    補抓「與特定 PERSON 緊鄰的稱謂」，而不是把所有 POSITION 都遮掉。
+
+    例如：
+      - 李佳蓉醫師      -> 補遮「醫師」
+      - Dr. Chia-Jung Lee -> 補遮「Dr.」
+
+    單獨出現的「主治醫師 / 醫師」不會因這個 helper 被遮蔽。
+    """
+    compact_text, offsets = _build_compact_ocr_line(line_words)
+    if not compact_text:
+        return
+
+    # 先只用目前中文 NER 的 PERSON 結果判斷姓名位置。
+    person_matches = [
+        m for m in detect_matches(compact_text)
+        if m[2] == "PERSON"
+    ]
+
+    title_spans = []
+    for p_start, p_end, _label, _score, _source in person_matches:
+        # 中文姓名後綴：PERSON + 醫師。只補「醫師」本身。
+        suffix = re.match(r"醫師", compact_text[p_end:])
+        if suffix:
+            title_spans.append((p_end, p_end + suffix.end(), "PERSON_TITLE"))
+
+        # 英文姓名前綴：Dr. + PERSON；允許 OCR 把句點漏掉。
+        prefix_text = compact_text[:p_start]
+        prefix = re.search(r"(?i)Dr\.?$", prefix_text)
+        if prefix:
+            title_spans.append((prefix.start(), prefix.end(), "PERSON_TITLE"))
+
+    for start, end, label in title_spans:
+        _append_compact_span_box(
+            boxes, offsets, compact_text, start, end, label, scale,
+            source="person_title_context",
+        )
+
+def _add_cross_line_field_boxes(grouped_lines, boxes, scale=1.0):
+    """補抓被 OCR 換行切開的欄位值；每一行各自建立 bbox，避免遮到行間正常文字。"""
+    date_pat = r"(?:19|20)\d{2}年\d{1,2}月\d{1,2}日"
+
+    # 欄位名稱 + 允許跨行的值。CASE_NUMBER 使用固定格式，避免一路吃到申請日期/承辦單位。
+    specs = [
+        (r"出生日期為[「\"']?(?P<value>" + date_pat + r")", "DATE_OF_BIRTH"),
+        (r"申請日期為[「\"']?(?P<value>" + date_pat + r")", "DATE_TIME"),
+        (r"開戶銀行為(?P<value>[^，,。；;]{2,30}?分行)", "BANK_NAME"),
+        (r"(?:理賠)?案件編號為(?P<value>CLM[-一](?:19|20)\d{2}[-一]\d{6}[0-9丆])", "CASE_NUMBER"),
+        (r"承辦單位於(?P<value>.+?)(?=收件|並登錄|，|,|。)", "ADDRESS"),
+    ]
+
+    for i in range(len(grouped_lines) - 1):
+        pair_words = grouped_lines[i] + grouped_lines[i + 1]
+        text, offsets = _build_compact_ocr_line(pair_words)
+
+        # 住院期間需要兩個日期分開遮，保留中間的「至」。
+        stay = re.search(r"住院期間為[「\"']?(?P<start>" + date_pat + r")至(?P<end>" + date_pat + r")", text)
+        matches = []
+        if stay:
+            matches.extend([
+                (stay.start("start"), stay.end("start"), "DATE_TIME"),
+                (stay.start("end"), stay.end("end"), "DATE_TIME"),
+            ])
+
+        for pattern, label in specs:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if not m:
+                continue
+            value = m.group("value")
+            if label == "ADDRESS" and not any(t in value for t in ("市", "縣", "區", "鄉", "鎮", "路", "街", "號")):
+                continue
+            matches.append((m.start("value"), m.end("value"), label))
+
+        for start, end, label in matches:
+            hit_offsets = [(s, e, w) for s, e, w in offsets if s < end and e > start]
+            if not hit_offsets:
+                continue
+            hit_line_ids = {w["line_id"] for _, _, w in hit_offsets}
+            # 這個 helper 只負責真正跨行的值；單行已由 _add_field_aware_boxes 處理。
+            if len(hit_line_ids) < 2:
+                continue
+
+            for line_id in sorted(hit_line_ids):
+                line_hits = [(s, e, w) for s, e, w in hit_offsets if w["line_id"] == line_id]
+                if not line_hits:
+                    continue
+                hit_words = [w for _, _, w in line_hits]
+                x0 = min(w["left"] for w in hit_words)
+                y0 = min(w["top"] for w in hit_words)
+                x1 = max(w["left"] + w["width"] for w in hit_words)
+                y1 = max(w["top"] + w["height"] for w in hit_words)
+                if scale != 1.0:
+                    x0 /= scale; y0 /= scale; x1 /= scale; y1 /= scale
+
+                part_start = max(start, min(s for s, _, _ in line_hits))
+                part_end = min(end, max(e for _, e, _ in line_hits))
+                boxes.append((x0, y0, x1, y1, label, text[part_start:part_end], None, "field_regex_crossline"))
+
+
 def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
     """回傳 [(x0, y0, x1, y1, label, matched_text, score, source), ...]（像素座標）
     scale：如果 words 是從 preprocess_for_ocr() 放大過的圖片跑 OCR 得到的，這裡要傳對應的放大倍率，
     才能把座標除回原圖尺寸；呼叫端不用另外處理，這裡回傳的座標已經是「原圖座標」。"""
     boxes = []
-    for line_words in _group_lines(words):
+    grouped_lines = _group_lines(words)
+    for line_words in grouped_lines:
         line_text, offsets = "", []
         for w in line_words:
             start = len(line_text)
@@ -363,11 +644,26 @@ def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
         # compact line 補抓 ADDRESS。
         compact_text, compact_offsets = _build_compact_ocr_line(line_words)
 
+        # 欄位感知補抓：補完整日期、銀行名稱、案件編號與承辦地址邊界。
+        _add_field_aware_boxes(line_words, boxes, scale=scale)
+
+        # 人物稱謂情境補抓：只遮與 PERSON 緊鄰的「醫師 / Dr.」，不恢復全域 POSITION 遮蔽。
+        _add_person_title_boxes(line_words, boxes, scale=scale)
+
         for start, end, label, score, source in detect_matches(compact_text):
 
             # compact 版本目前只補抓 ADDRESS，
             # 避免改變其他既有 PII 的偵測行為。
-            if label != "ADDRESS":
+            COMPACT_LABELS = {
+                "ADDRESS",
+                "LICENSE_NUMBER",
+                "MEDICAL_RECORD_NUMBER",
+                "INSURANCE_POLICY_NUMBER",
+                "EMPLOYEE_ID",
+                "CASE_NUMBER",
+            }
+
+            if label not in COMPACT_LABELS:
                 continue
 
             hit_words = [
@@ -510,7 +806,226 @@ def find_sensitive_boxes_in_words(words: List[dict], scale: float = 1.0):
             )
 
 
+    # 欄位值本身若被 OCR 切成兩行，先以欄位語意補完整。
+    _add_cross_line_field_boxes(grouped_lines, boxes, scale=scale)
+
+    # 相鄰兩行的 PII 補抓。
+    # Windows OCR 可能把 Email、身分證、帳號等切在換行處；單行偵測時會只抓到後半段。
+    # 這裡把「相鄰兩行」各自 compact 後暫時串接，只允許格式明確的 PII 類別跨行。
+    # 命中後仍依原本 line_id 分開建立 bbox，避免用一個大矩形遮住兩行之間的正常文字。
+    CROSS_LINE_LABELS = {
+        "EMAIL", "EMAIL_ADDRESS",
+        "TW_ID",
+        "TW_PHONE", "PHONE_NUMBER", "US_PHONE",
+        "BANK_ACCOUNT",
+        "LICENSE_NUMBER",
+        "MEDICAL_RECORD_NUMBER",
+        "INSURANCE_POLICY_NUMBER",
+        "EMPLOYEE_ID",
+        "CASE_NUMBER",
+        "IP_ADDRESS",
+    }
+
+    for i in range(len(grouped_lines) - 1):
+        pair_words = grouped_lines[i] + grouped_lines[i + 1]
+        cross_text, cross_offsets = _build_compact_ocr_line(pair_words)
+
+        for start, end, label, score, source in detect_matches(cross_text):
+            if label not in CROSS_LINE_LABELS:
+                continue
+
+            hit_offsets = [
+                (s, e, w)
+                for s, e, w in cross_offsets
+                if s < end and e > start
+            ]
+            if not hit_offsets:
+                continue
+
+            # 必須真的跨越兩個 OCR line，否則單行流程已經處理過。
+            hit_line_ids = {w["line_id"] for _, _, w in hit_offsets}
+            if len(hit_line_ids) < 2:
+                continue
+
+            # 同一個跨行 PII 分成每行各自的 bbox，避免遮到中間大片正常內容。
+            for line_id in sorted(hit_line_ids):
+                line_hits = [
+                    (s, e, w)
+                    for s, e, w in hit_offsets
+                    if w["line_id"] == line_id
+                ]
+                if not line_hits:
+                    continue
+
+                hit_words = [w for _, _, w in line_hits]
+                x0 = min(w["left"] for w in hit_words)
+                y0 = min(w["top"] for w in hit_words)
+                x1 = max(w["left"] + w["width"] for w in hit_words)
+                y1 = max(w["top"] + w["height"] for w in hit_words)
+
+                if scale != 1.0:
+                    x0 /= scale
+                    y0 /= scale
+                    x1 /= scale
+                    y1 /= scale
+
+                # 該行若已被前面的單行流程以相同 label、相同位置遮蔽，就不重複加入。
+                already_detected = any(
+                    existing[4] == label
+                    and abs(existing[0] - x0) < 1
+                    and abs(existing[1] - y0) < 1
+                    and abs(existing[2] - x1) < 1
+                    and abs(existing[3] - y1) < 1
+                    for existing in boxes
+                )
+                if already_detected:
+                    continue
+
+                # value 只記錄這一行實際被框到的片段；完整跨行內容仍由 detect_matches 判斷。
+                part_start = max(start, min(s for s, _, _ in line_hits))
+                part_end = min(end, max(e for _, e, _ in line_hits))
+                part_value = cross_text[part_start:part_end]
+
+                boxes.append((
+                    x0, y0, x1, y1,
+                    label,
+                    part_value,
+                    score,
+                    source,
+                ))
+
+    # 最終輸出前做 bbox 去重。
+    # 同一段 PII 可能被「一般行 / compact / normalization / 跨行」重複抓到；
+    # 只移除空間上幾乎是同一個位置的重複框，不合併相鄰但不同列的跨行片段。
+    boxes = _dedupe_sensitive_boxes(boxes)
     return boxes
+
+
+def _box_overlap_ratio(box_a, box_b) -> float:
+    """回傳兩框交集面積 / 較小框面積；用來判斷是否其實是同一段文字。"""
+    ax0, ay0, ax1, ay1 = box_a[:4]
+    bx0, by0, bx1, by1 = box_b[:4]
+
+    ix0 = max(ax0, bx0)
+    iy0 = max(ay0, by0)
+    ix1 = min(ax1, bx1)
+    iy1 = min(ay1, by1)
+    if ix1 <= ix0 or iy1 <= iy0:
+        return 0.0
+
+    intersection = (ix1 - ix0) * (iy1 - iy0)
+    area_a = max(0.0, ax1 - ax0) * max(0.0, ay1 - ay0)
+    area_b = max(0.0, bx1 - bx0) * max(0.0, by1 - by0)
+    smaller = min(area_a, area_b)
+    return intersection / smaller if smaller > 0 else 0.0
+
+
+def _box_label_priority(label: str) -> int:
+    """同一位置出現多種 label 時，格式明確的 PII 優先於泛用 NLP 類別。"""
+    explicit = {
+        "TW_ID", "EMAIL", "EMAIL_ADDRESS", "TW_PHONE", "IP_ADDRESS",
+        "BANK_ACCOUNT", "LICENSE_NUMBER", "MEDICAL_RECORD_NUMBER",
+        "INSURANCE_POLICY_NUMBER", "EMPLOYEE_ID", "CASE_NUMBER", "BANK_NAME", "DATE_OF_BIRTH",
+    }
+    if label in explicit:
+        return 0
+    if label in {"PERSON", "ADDRESS"}:
+        return 1
+    # PERSON_TITLE 是經「緊鄰 PERSON」情境確認後才補出的稱謂。
+    # 必須優先於原始 POSITION，否則兩者 bbox 完全重疊時，
+    # 去重會先留下 POSITION，接著政策過濾又把 POSITION 刪掉，
+    # 最後就會出現「李佳蓉有遮、醫師沒遮」的情況。
+    if label == "PERSON_TITLE":
+        return 2
+    if label in {"CREDENTIAL_LIKE", "PHONE_NUMBER", "US_PHONE"}:
+        return 2
+    return 3
+
+
+def _dedupe_sensitive_boxes(boxes):
+    """
+    移除同位置重複 bbox。
+
+    注意：這裡刻意不做全域 Sensitive-PII allowlist。
+    DATE_TIME / ORGANIZATION / POSITION 是否屬於敏感資訊需要依上下文判斷；
+    若直接依 label 全砍，可能讓出生日期、就醫日期等真正敏感內容外洩。
+    因此這一版先做安全的 bbox 去重，再用 benchmark 決定是否需要情境式政策過濾。
+    """
+    ordered = sorted(
+        boxes,
+        key=lambda b: (
+            _box_label_priority(b[4]),
+            -(b[2] - b[0]) * (b[3] - b[1]),
+            -(b[6] if b[6] is not None else 0),
+        ),
+    )
+
+    kept = []
+    for candidate in ordered:
+        duplicate_index = None
+        for i, existing in enumerate(kept):
+            # 0.85：只把幾乎位於同一處的框視為重複。
+            # 跨行 PII 的上下兩個片段 y 座標不同，不會在這裡被合併。
+            if _box_overlap_ratio(candidate, existing) >= 0.85:
+                duplicate_index = i
+                break
+
+        if duplicate_index is None:
+            kept.append(candidate)
+            continue
+
+        existing = kept[duplicate_index]
+        candidate_key = (
+            _box_label_priority(candidate[4]),
+            -(candidate[2] - candidate[0]) * (candidate[3] - candidate[1]),
+            -(candidate[6] if candidate[6] is not None else 0),
+        )
+        existing_key = (
+            _box_label_priority(existing[4]),
+            -(existing[2] - existing[0]) * (existing[3] - existing[1]),
+            -(existing[6] if existing[6] is not None else 0),
+        )
+        if candidate_key < existing_key:
+            kept[duplicate_index] = candidate
+
+    # 若欄位規則已抓到完整日期，移除與它重疊的泛用 DATE_TIME。
+    # 例如「2026年2月14日至2026年2月20日」中的舊模型可能另抓「14日至2026」，
+    # 若保留會把 Ground Truth 要留下的「至」一起遮掉。
+    field_date_boxes = [
+        b for b in kept
+        if b[4] in {"DATE_OF_BIRTH", "DATE_TIME"}
+        and b[7] in {"field_regex", "field_regex_crossline"}
+    ]
+    if field_date_boxes:
+        cleaned = []
+        for b in kept:
+            if b[4] == "DATE_TIME" and b[7] not in {"field_regex", "field_regex_crossline"}:
+                if any(_box_overlap_ratio(b, fb) > 0 for fb in field_date_boxes):
+                    continue
+            cleaned.append(b)
+        kept = cleaned
+
+    # 第二階段：媒體去識別化政策過濾。
+    # POSITION（職稱）本身不因 NER 單獨命中就遮蔽。
+    # ORGANIZATION 不再全域排除：銀行分行等欄位在本專題 Ground Truth 中屬於應遮資訊。
+    # DATE_TIME 暫時保留：目前測試文件同時包含出生/住院/申請日期，
+    # 在沒有可靠上下文分類前直接刪除會增加敏感日期外洩風險。
+    excluded_labels = {"POSITION"}
+    kept = [box for box in kept if box[4] not in excluded_labels]
+
+    # OCR / NER 有時會把欄位名稱「IP」誤判成 ORGANIZATION。
+    # 「IP」只是欄位標籤，不是個資值；只排除 exact value=IP，
+    # 不全域排除 ORGANIZATION，避免影響銀行分行等真正需要遮蔽的欄位。
+    kept = [
+        box for box in kept
+        if not (
+            box[4] == "ORGANIZATION"
+            and str(box[5]).strip().upper().rstrip(":：") in {"IP", "EMAIL", "TW"}
+        )
+    ]
+
+    # 輸出順序依畫面位置排列，方便 terminal / map 檔閱讀。
+    return sorted(kept, key=lambda b: (b[1], b[0]))
 
 
 # ========== 對照表讀寫 ==========
@@ -584,10 +1099,23 @@ def _page_has_text(page: "fitz.Page", min_words: int = 5) -> bool:
 
 
 def _mask_pdf_text_page(page, entries, counters):
+    """
+    文字層 PDF：
+    - 一般 PII 仍使用 detect_matches。
+    - 對 Phone / Email / TW ID / IP 這類明確欄位，優先只遮 value，
+      避免把 Email、TW、IP 等欄位名稱一起遮掉。
+    """
     words = page.get_text("words")
     lines = {}
     for w in words:
         lines.setdefault((w[5], w[6]), []).append(w)
+
+    field_value_patterns = [
+        ("TW_PHONE", re.compile(r"(?i)\b(?:Phone|電話)\s*[:：]\s*(?P<value>0\d{1,2}-?\d{6,8}|09\d{2}-?\d{3}-?\d{3})")),
+        ("EMAIL", re.compile(r"(?i)\bEmail\s*[:：]\s*(?P<value>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})")),
+        ("TW_ID", re.compile(r"(?i)\bTW\s*ID\s*[:：]\s*(?P<value>[A-Z][12]\d{8})")),
+        ("IP_ADDRESS", re.compile(r"(?i)\bIP\s*[:：]\s*(?P<value>(?:\d{1,3}\.){3}\d{1,3})")),
+    ]
 
     for line_words in lines.values():
         line_words.sort(key=lambda w: w[7])
@@ -598,10 +1126,37 @@ def _mask_pdf_text_page(page, entries, counters):
             offsets.append((start, len(line_text), w))
             line_text += " "
 
-        for start, end, label, score, source in detect_matches(line_text):
+        matches = list(detect_matches(line_text))
+
+        # 明確欄位改成 value-only span；同 label 的一般 detector 結果移除，
+        # 避免同一行又產生一個包含欄位名稱的較大黑框。
+        for field_label, pattern in field_value_patterns:
+            m = pattern.search(line_text)
+            if not m:
+                continue
+            matches = [item for item in matches if item[2] != field_label]
+            matches.append((
+                m.start("value"),
+                m.end("value"),
+                field_label,
+                None,
+                "pdf_field_value",
+            ))
+
+        # PDF 文字層中這些 exact token 是欄位名稱，不是敏感值。
+        field_tokens = {"PHONE", "EMAIL", "TW", "ID", "IP"}
+
+        for start, end, label, score, source in matches:
             hit = [w for s, e, w in offsets if s < end and e > start]
             if not hit:
                 continue
+
+            # 防止 NER 把單獨欄位名稱誤判成 ORGANIZATION。
+            if label == "ORGANIZATION":
+                hit_text = "".join(w[4] for w in hit).strip().upper().rstrip(":：")
+                if hit_text in field_tokens:
+                    continue
+
             x0 = min(w[0] for w in hit); y0 = min(w[1] for w in hit)
             x1 = max(w[2] for w in hit); y1 = max(w[3] for w in hit)
             rect = fitz.Rect(x0, y0, x1, y1)
@@ -659,10 +1214,103 @@ def _collect_pdf_ocr_boxes(page, zoom: float):
     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
     processed, ocr_scale = preprocess_for_ocr(img)
+    pdf_words = ocr_words(processed)
     pixel_boxes = find_sensitive_boxes_in_words(
-        ocr_words(processed),
+        pdf_words,
         scale=ocr_scale,
     )
+
+    # 掃描 PDF 欄位名稱保護：
+    # OCR/英文 NER 偶爾會把純欄位名稱 "Email" 誤判成 PERSON，
+    # 造成 Email: 左側標籤也被遮蔽。只排除「精確等於 Email」
+    # 的 PERSON/ORGANIZATION 誤判；真正的 Email value 仍由 EMAIL 規則遮蔽。
+    pixel_boxes = [
+        box for box in pixel_boxes
+        if not (
+            box[4] in {"PERSON", "ORGANIZATION"}
+            and str(box[5]).strip().upper().rstrip(":：") == "EMAIL"
+        )
+    ]
+
+    # 掃描 PDF 專用 IPv4 fallback。
+    # low-resolution 實測可能把 ".1." 整塊 OCR 成「工」：
+    #   192.168.1.100 -> 192,168工100 / 192·168工100
+    # 這時無法可靠還原遺失的 1，但去識別化只需要把整個 value 區域遮住。
+    existing_ip = any(box[4] == "IP_ADDRESS" for box in pixel_boxes)
+    if not existing_ip:
+        for line_words in _group_lines(pdf_words):
+            raw = "".join(w["text"] for w in line_words)
+            normalized = (
+                raw.replace("·", ".")
+                   .replace("丄", ".")
+                   .replace("工", ".")
+                   .replace(",", ".")
+                   .replace("，", ".")
+                   .replace(" ", "")
+            )
+
+            valid_ip = None
+
+            # 情況 A：正規化後仍可得到完整合法 IPv4。
+            m = re.search(r"(?<!\d)(?P<ip>\d{1,3}(?:\.\d{1,3}){3})(?!\d)", normalized)
+            if m:
+                octets = m.group("ip").split(".")
+                if all(0 <= int(part) <= 255 for part in octets):
+                    valid_ip = m.group("ip")
+
+            # 情況 B：low-resolution 把 ".1." 合併成「工」。
+            # 只接受明確 IP-like 欄位：
+            #   zoom 2 實測 prefix=""   -> :192,168工100
+            #   zoom 3 實測 prefix="|P" -> |P:192·168工100
+            if valid_ip is None and ":" in raw:
+                prefix, value_part = raw.split(":", 1)
+                prefix_norm = prefix.strip().upper().replace(" ", "")
+                ip_like_prefix = prefix_norm in {"", "IP", "|P", "丨P", "1P"}
+
+                allowed = set("0123456789.·丄工,，")
+                digit_count = sum(ch.isdigit() for ch in value_part)
+                separator_count = sum(ch in ".·丄工,，" for ch in value_part)
+
+                if (
+                    ip_like_prefix
+                    and value_part
+                    and all(ch in allowed for ch in value_part)
+                    and 7 <= digit_count <= 12
+                    and separator_count >= 2
+                ):
+                    valid_ip = value_part
+
+            if valid_ip is None:
+                continue
+
+            # 只遮冒號後的 IP value，不遮 IP / |P / 冒號本身。
+            colon_index = next(
+                (i for i, w in enumerate(line_words) if w["text"].strip() in {":", "："}),
+                -1,
+            )
+            value_words = line_words[colon_index + 1:] if colon_index >= 0 else line_words
+
+            numeric_words = [
+                w for w in value_words
+                if any(ch.isdigit() for ch in w["text"])
+                or w["text"] in {".", "·", "丄", "工", ",", "，"}
+            ]
+            if not numeric_words:
+                continue
+
+            x0 = min(w["left"] for w in numeric_words)
+            y0 = min(w["top"] for w in numeric_words)
+            x1 = max(w["left"] + w["width"] for w in numeric_words)
+            y1 = max(w["top"] + w["height"] for w in numeric_words)
+            if ocr_scale != 1.0:
+                x0 /= ocr_scale; y0 /= ocr_scale
+                x1 /= ocr_scale; y1 /= ocr_scale
+
+            pixel_boxes.append((
+                x0, y0, x1, y1,
+                "IP_ADDRESS", valid_ip, None, "pdf_ip_fallback",
+            ))
+            break
 
     pdf_boxes = []
     for x0, y0, x1, y1, label, value, score, source in pixel_boxes:
