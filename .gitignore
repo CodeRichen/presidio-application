@@ -1,7 +1,7 @@
 presidio/real
 prompt.txt
 test/offline_model
-
+*.ps1
 # Python virtual environment
 .venv/
 

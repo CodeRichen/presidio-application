@@ -13,9 +13,9 @@ DETECTION_RESULT = [('本案理賠申請人為王志明（英文名 Chih-Ming', 
 # ---------------------------------------------------------------------------
 # 變數二：正確答案 (ground truth) 資料檔路徑 —— 內含 article 與 answer
 # ---------------------------------------------------------------------------
-GROUND_TRUTH_FILE = "presidio/t1.json"
+GROUND_TRUTH_FILE = "../presidio/t1.json"
 
-OUTPUT_IMAGE = "report/pii_highlight_result.png"
+OUTPUT_IMAGE = "pii_highlight_result.png"
 
 # ---------------------------------------------------------------------------
 # 顏色設定

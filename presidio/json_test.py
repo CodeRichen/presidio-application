@@ -41,8 +41,35 @@ pdf/圖片分支會直接 import 專案本身的 handler_media.py，所以請確
    的關鍵步驟（複製/貼上/還原、文字偵測、handler_media 呼叫、json 檔讀取），
    都會攔截例外、用 traceback.print_exc() 印出完整錯誤訊息並標明是哪個步驟
    失敗，再以 sys.exit(1) 結束，方便排查問題。
+3) pdf/圖片分支新增：在報告檔最前面先印出「OCR 原始辨識文字」(整份文件 OCR
+   實際看到的文字內容)，方便肉眼比對辨識有沒有跑掉、有沒有辨識成空白等。
+   這段擷取跟 handler_media.mask_pdf/mask_image 內部真正拿去比對答案的偵測
+   邏輯完全獨立、互不影響：就算這裡擷取失敗或跟 handler_media 內部辨識到的
+   不完全一樣，也不會影響下面版本一/二/三的評分結果。
 """
 import os
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")  # 避免不同套件各自帶的 OpenMP/MKL DLL 撞名衝突
+
+import re
+from dataclasses import dataclass
+from typing import Callable, Optional, List, Tuple
+import traceback
+
+# 刻意把 torch 提早載入，讓它先把自己的 c10.dll 等底層 DLL 初始化完成，
+# 避免之後 presidio_analyzer 拉進來的 spaCy/thinc/blis 先佔用同名但不同版本的底層庫，
+# 導致 torch 之後才載入時發生 [WinError 1114] DLL 初始化失敗。
+try:
+    import torch  # noqa: F401
+except Exception:
+    pass
+
+# ---------- 英文：走 Presidio，含內建的規則式辨識器 (SSN/IBAN/信用卡/加密貨幣錢包/IP) + spaCy 英文 NER ----------
+try:
+    from presidio_analyzer import AnalyzerEngine
+except Exception as e:
+    print(f"Error importing AnalyzerEngine: {e}")
+    sys.exit(1)
+
 import sys
 import json
 import time
@@ -421,6 +448,62 @@ def score_media(expected, detected, *, require_exact_value, require_label):
     return tp_pairs, det_left, exp_left
 
 
+def _words_to_text(handler_media, words):
+    """把 ocr_words() 回傳的 word list 依行組回可讀文字：先用 handler_media 自己的
+    _group_lines() 依 line_id 分組(這是 Windows OCR 原生提供的分行資訊，比自己猜行準)，
+    行內詞之間用空白接起來，行與行之間用換行分隔。"""
+    lines = handler_media._group_lines(words)
+    return "\n".join(" ".join(w["text"] for w in line) for line in lines)
+
+
+def _ocr_raw_text_for_display(handler_media, path, ext, scanned_zoom=2.0):
+    """在報告最前面顯示「OCR 實際辨識出的原始文字」，方便肉眼比對辨識有沒有跑掉、
+    有沒有整頁辨識成空白等狀況。
+
+    刻意直接借用 handler_media.py 本身已經寫好的 Windows 原生 OCR 相關函式
+    (preprocess_for_ocr / ocr_words / _group_lines / _page_has_text)，跟
+    handler_media.mask_pdf/mask_image 內部真正拿去比對答案的偵測邏輯是同一顆
+    OCR 引擎、同一套前處理，不是另外裝一套 Tesseract 之類的東西——這個專案本來
+    就沒有用到 Tesseract，環境也沒裝，用 pytesseract 一定會報 TesseractNotFoundError。
+
+    這裡只是「多組一次可讀文字」用來顯示，不判斷敏感與否、也不塗黑，跟下面正式
+    的偵測+評分流程完全獨立：就算這裡擷取失敗，也不會影響版本一/二/三的評分結果。
+    """
+    try:
+        if ext in PDF_EXTS:
+            doc = handler_media.fitz.open(path)
+            try:
+                page_texts = []
+                for page in doc:
+                    if handler_media._page_has_text(page):
+                        # 跟 mask_pdf 判斷這頁是否有內嵌文字層的邏輯一致，有的話直接用最準。
+                        embedded = page.get_text().strip()
+                        page_texts.append(f"--- 第 {page.number + 1} 頁（PDF 內嵌文字層，非 OCR）---\n{embedded}")
+                    else:
+                        # 掃描頁：比照 handler_media 內部 OCR 的做法，先轉成圖片、
+                        # 前處理，再用 Windows OCR 辨識。
+                        pix = page.get_pixmap(matrix=handler_media.fitz.Matrix(scanned_zoom, scanned_zoom),
+                                               annots=False)
+                        img = handler_media.Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                        processed, _ = handler_media.preprocess_for_ocr(img)
+                        words = handler_media.ocr_words(processed)
+                        text = _words_to_text(handler_media, words)
+                        page_texts.append(f"--- 第 {page.number + 1} 頁（Windows OCR 辨識）---\n"
+                                           f"{text or '(本頁 OCR 結果為空白)'}")
+                return "\n\n".join(page_texts) if page_texts else "(空白/無法辨識)"
+            finally:
+                doc.close()
+        else:
+            img = handler_media.Image.open(path).convert("RGB")
+            processed, _ = handler_media.preprocess_for_ocr(img)
+            words = handler_media.ocr_words(processed)
+            text = _words_to_text(handler_media, words)
+            return text or "(OCR 結果為空白)"
+    except Exception:
+        return ("(OCR 原始文字擷取失敗，以下是完整錯誤訊息；這不影響下方 handler_media "
+                "的偵測與評分結果)\n" + traceback.format_exc())
+
+
 def run_media_flow(path, answer, result_file):
     """直接呼叫專案裡已經寫好的 handler_media.mask_pdf / mask_image，不自己重寫 OCR。"""
     try:
@@ -448,6 +531,12 @@ def run_media_flow(path, answer, result_file):
         traceback.print_exc()
     print("[暖機] 完成，開始正式測試")
 
+    # ---- 額外附加：擷取 OCR 原始辨識文字，僅供報告最前面顯示參考，跟下面正式的
+    #      偵測+評分流程完全獨立，不會影響也不會被計入下面的計時。----
+    print("[OCR] 正在擷取原始辨識文字，供報告最前面顯示參考(不影響偵測評分邏輯)...")
+    raw_ocr_text = _ocr_raw_text_for_display(handler_media, path, ext)
+    print("[OCR] 擷取完成")
+
     t0 = time.perf_counter()
     try:
         if ext in PDF_EXTS:
@@ -463,6 +552,14 @@ def run_media_flow(path, answer, result_file):
 
     lines = []
     def out(s=""): lines.append(s)
+
+    # ---- 報告最前面：先印 OCR 原始辨識文字，方便肉眼比對 ----
+    out("=" * 78)
+    out("[OCR 原始辨識文字]（僅供肉眼比對參考，跟下方偵測評分邏輯完全獨立）")
+    out("-" * 78)
+    out(raw_ocr_text)
+    out("=" * 78)
+    out("")
 
     out("=" * 78)
     out("剪貼簿敏感資訊防護 - 圖片/PDF 偵測測試報告（多版本評分，透過 handler_media）")
@@ -515,14 +612,17 @@ def run_media_flow(path, answer, result_file):
 
 # ============================== 進入點 ==============================
 def main_test():
-    raw = input("請輸入要測試的檔案名稱（json / pdf / 圖片檔，可直接打檔名或完整路徑）：")
+    # raw = input("請輸入要測試的檔案名稱（json / pdf / 圖片檔，可直接打檔名或完整路徑）：")
+    raw = 't1.png'
     path = _resolve_path(raw)
     if path is None:
         print(f"[錯誤] 找不到檔案：{raw}")
         sys.exit(1)
 
     ext = os.path.splitext(path)[1].lower()
-    stem = os.path.splitext(os.path.basename(path))[0]
+    filename = os.path.basename(path)
+    name, ext = os.path.splitext(filename)
+    stem = name + "_" + ext.lstrip(".")
     result_file = os.path.join(SCRIPT_DIR, f"{stem}_result.txt")
 
     if ext == ".json":
@@ -536,7 +636,8 @@ def main_test():
         run_text_flow(article, answer, result_file)
 
     elif ext in PDF_EXTS or ext in IMAGE_EXTS:
-        ans_raw = input("請輸入對應的答案 json 檔名：")
+        # ans_raw = input("請輸入對應的答案 json 檔名：")
+        ans_raw = raw.replace(ext, ".json")  # 預設答案檔名跟輸入檔同名，只是副檔名改成 .json
         ans_path = _resolve_path(ans_raw)
         if ans_path is None:
             print(f"[錯誤] 找不到答案檔：{ans_raw}")
