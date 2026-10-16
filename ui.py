@@ -7,7 +7,7 @@ ui.py - 剪貼簿敏感資訊防護 圖形介面 (tkinter，不需額外安裝)
   - 檔案：選擇多個檔案 (code / text / media / csv / xlsx) -> 去識別化
   - 剪貼簿：讀取剪貼簿 (文字或檔案)、把結果寫回剪貼簿
   - 檢視 / 清除對照表；關閉視窗時自動刪除對照表檔案
-耗時工作 (OCR 等) 在背景執行緒跑，介面不會卡住；所有 print 會顯示在下方記錄區。
+啟動時在背景預熱模型；耗時工作在背景執行緒跑，介面不會卡住；所有 print 顯示在下方記錄區。
 """
 import os
 import sys
@@ -43,6 +43,7 @@ class App(tk.Tk):
         self.mapping = core.load_map()
         self.q = queue.Queue()
         self.busy = False
+        self._on_done = None
         self.files = []
         self.outputs = []
 
@@ -52,6 +53,7 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(100, self._poll)
         print(f"[就緒] 已載入對照表 {len(self.mapping)} 筆")
+        self._start(core.warmup, "載入模型中…", None)  # 背景預熱
 
     # ---------------- 介面 ----------------
     def _build(self):
@@ -145,7 +147,8 @@ class App(tk.Tk):
         self.status = tk.StringVar(value="就緒")
         ttk.Label(self, textvariable=self.status, anchor="w").pack(fill="x", padx=8, pady=(0, 4))
 
-        self._busy_widgets = [self.btn_read, self.btn_auto, self.btn_mask, self.btn_restore, self.btn_run_files]
+        self._busy_widgets = [self.btn_read, self.btn_auto, self.btn_mask,
+                              self.btn_restore, self.btn_run_files]
 
     # ---------------- 背景執行 ----------------
     def _set_busy(self, busy, msg=""):
@@ -154,9 +157,11 @@ class App(tk.Tk):
             w.state(["disabled"] if busy else ["!disabled"])
         self.status.set(msg if busy else "就緒")
 
-    def _run_bg(self, func, msg):
+    def _start(self, func, msg, on_done):
+        """在背景執行 func，完成後在主執行緒呼叫 on_done(result)"""
         if self.busy:
             return
+        self._on_done = on_done
         self._set_busy(True, msg)
 
         def worker():
@@ -165,7 +170,6 @@ class App(tk.Tk):
             except Exception as e:
                 self.q.put(("done", None, e))
         threading.Thread(target=worker, daemon=True).start()
-        self._pending = None
 
     def _poll(self):
         try:
@@ -179,8 +183,7 @@ class App(tk.Tk):
                 elif item[0] == "done":
                     _, result, err = item
                     self._set_busy(False)
-                    cb = getattr(self, "_on_done", None)
-                    self._on_done = None
+                    cb, self._on_done = self._on_done, None
                     if err:
                         print(f"[錯誤] {err}")
                         messagebox.showerror("處理失敗", str(err))
@@ -190,12 +193,6 @@ class App(tk.Tk):
         except queue.Empty:
             pass
         self.after(100, self._poll)
-
-    def _start(self, func, msg, on_done):
-        if self.busy:
-            return
-        self._on_done = on_done
-        self._run_bg(func, msg)
 
     # ---------------- 文字 ----------------
     def read_clipboard_text(self):
@@ -223,7 +220,6 @@ class App(tk.Tk):
             self.txt_out.delete("1.0", "end")
             if result:
                 self.txt_out.insert("1.0", result)
-                self.status.set("完成")
             else:
                 self.txt_out.insert("1.0", text)
                 print("[結果] 未偵測到需要遮蔽 / 還原的內容，結果與輸入相同")

@@ -6,20 +6,23 @@
   模式 A・專屬快速鍵 (HOTKEY_PASTE 有值)：
       複製時只算出覆蓋結果並暫存，不動剪貼簿；按專屬貼上鍵才暫時寫入剪貼簿、
       模擬 Ctrl+V、貼完立刻還原剪貼簿。原生 Ctrl+C / Ctrl+V 不受影響。
+      貼上會等複製處理完才執行，不會被丟掉。
 
   模式 B・Ctrl+C 直接當快速鍵 (HOTKEY_PASTE = None)：
       原生 Ctrl+C 先把資料寫進剪貼簿，我們讀出來處理後直接覆寫剪貼簿；
       之後原生 Ctrl+V 就會貼出處理後版本，不註冊任何貼上快速鍵。
+      注意：處理完成前就按 Ctrl+V，貼出的會是原始內容 (原生貼上無法攔截)。
       副作用：終端機按 Ctrl+C 也會觸發 on_copy；停不掉腳本時直接關閉終端機視窗。
 
 架構：
-    core.py  <- 共用核心 (遮蔽/還原、分派到 code/text/media/field/csv、剪貼簿工具)
+    core.py  <- 共用核心
     main.py  <- 這支：只負責快速鍵與模式 A/B 流程
-    ui.py    <- 圖形介面，跟這支互相獨立，同樣只呼叫 core
+    ui.py    <- 圖形介面，與這支互相獨立，同樣只呼叫 core
 
 安裝：pip install pywin32 psutil pyperclip pynput
 """
 import time
+import threading
 
 import win32api
 import win32con
@@ -65,11 +68,11 @@ def on_copy(mapping):
     print("\n" + "=" * 50)
     print("【偵測到 Ctrl+C】" if DIRECT_MODE else "【偵測到複製快速鍵】")
 
-    if DIRECT_MODE:
-        time.sleep(0.15)  # 等原生複製寫完剪貼簿
-    else:
-        send_key_combination(ord('C'))
-        time.sleep(0.15)
+    seq = core.clipboard_seq()
+    if not DIRECT_MODE:
+        send_key_combination(ord('C'))  # 模式 A：自己模擬一次複製
+    if not core.wait_clipboard_change(seq, timeout=1.0):
+        print("[提示] 剪貼簿沒有變化 (可能複製了相同內容，或原生複製已先完成)，以目前剪貼簿內容處理")
 
     title, proc = core.get_active_window_info()
     content_type, content = core.get_clipboard_content()
@@ -131,24 +134,37 @@ def on_paste(mapping):
     print("=" * 50)
 
 
-_busy = False  # 防止模擬按鍵又觸發同一組快速鍵造成遞迴
+_state_lock = threading.Lock()
+_running = {"copy": False, "paste": False}
+_work_lock = threading.Lock()   # 複製與貼上序列化：貼上會等複製做完，不會被丟掉
 
 
-def _guarded(func):
+def _guarded(name, func):
+    """快速鍵 callback 立刻返回 (不卡住鍵盤 hook)，實際工作丟到背景執行緒。
+    同一種動作執行中再次觸發 (例如模擬按鍵造成的) 會被忽略。"""
     def wrapper():
-        global _busy
-        if _busy:
-            return
-        _busy = True
-        try:
-            func()
-        finally:
-            _busy = False
+        with _state_lock:
+            if _running[name]:
+                return
+            _running[name] = True
+
+        def run():
+            try:
+                with _work_lock:
+                    func()
+            except Exception as e:
+                print(f"[錯誤] {name} 處理失敗：{e}")
+            finally:
+                with _state_lock:
+                    _running[name] = False
+
+        threading.Thread(target=run, daemon=True).start()
     return wrapper
 
 
 def start_listener():
     mapping = core.load_map()
+    core.warmup()   # 先載入模型，再開始監聽
     print("【監聽啟動】" + ("(模式 B：Ctrl+C 直接模式)" if DIRECT_MODE else "(模式 A：專屬快速鍵)"))
     if DIRECT_MODE:
         print(f"  - {HOTKEY_COPY} : 直接複製，自動判斷遮蔽/還原並覆寫剪貼簿")
@@ -160,9 +176,9 @@ def start_listener():
         print("  - Ctrl+V : 系統原生貼上，不受影響")
         print("在終端機視窗按 Ctrl+C 可停止腳本\n")
 
-    hotkeys = {HOTKEY_COPY: _guarded(lambda: on_copy(mapping))}
+    hotkeys = {HOTKEY_COPY: _guarded("copy", lambda: on_copy(mapping))}
     if not DIRECT_MODE:
-        hotkeys[HOTKEY_PASTE] = _guarded(lambda: on_paste(mapping))
+        hotkeys[HOTKEY_PASTE] = _guarded("paste", lambda: on_paste(mapping))
 
     listener = keyboard.GlobalHotKeys(hotkeys)
     listener.start()

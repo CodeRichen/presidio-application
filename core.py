@@ -2,13 +2,14 @@
 core.py - main.py 與 ui.py 共用的核心
 ====================================================
 放：設定、對照表、標籤遮蔽/還原、重疊處理、檔案分派 (code/text/media/field/csv)、
-    剪貼簿讀寫工具。
-main.py 與 ui.py 都只 import 這支，彼此不互相呼叫。
+    剪貼簿讀寫工具、模型預熱。
+main.py 與 ui.py 都只 import 這支，彼此不互相 import。
 log 一律用 print；ui.py 會把 sys.stdout 接到畫面上的記錄區。
 """
 import os
 import io
 import re
+import sys
 import time
 import struct
 import contextlib
@@ -321,19 +322,25 @@ def _paste_with_retry(retries: int = 5, delay: float = 0.05) -> str:
 def get_clipboard_content():
     """回傳 ("FILES", [路徑...]) 或 ("TEXT", 文字)"""
     copied_files = []
-    try:
-        win32clipboard.OpenClipboard()
-        if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_HDROP):
-            data = win32clipboard.GetClipboardData(win32clipboard.CF_HDROP)
-            if data:
-                copied_files = list(data)
-    except Exception:
-        pass
-    finally:
+    for _ in range(5):  # 剪貼簿可能被短暫佔用，重試
         try:
-            win32clipboard.CloseClipboard()
+            win32clipboard.OpenClipboard()
+        except Exception:
+            time.sleep(0.05)
+            continue
+        try:
+            if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_HDROP):
+                data = win32clipboard.GetClipboardData(win32clipboard.CF_HDROP)
+                if data:
+                    copied_files = list(data)
         except Exception:
             pass
+        finally:
+            try:
+                win32clipboard.CloseClipboard()
+            except Exception:
+                pass
+        break
     if copied_files:
         return "FILES", copied_files
     return "TEXT", _paste_with_retry()
@@ -354,3 +361,36 @@ def copy_files_to_clipboard(paths):
 
 def copy_text_to_clipboard(text):
     pyperclip.copy(text)
+
+
+def clipboard_seq():
+    return win32clipboard.GetClipboardSequenceNumber()
+
+
+def wait_clipboard_change(old_seq, timeout=1.0):
+    """等剪貼簿內容真的被更新 (序號改變)，比固定 sleep 可靠"""
+    end = time.time() + timeout
+    while time.time() < end:
+        if win32clipboard.GetClipboardSequenceNumber() != old_seq:
+            time.sleep(0.05)  # 讓寫入的程式把剪貼簿釋放
+            return True
+        time.sleep(0.02)
+    return False
+
+
+# ---------- 預熱 ----------
+def warmup():
+    """啟動時先跑一次，讓 Presidio / NER 模型提前載入，第一次複製才不會卡幾秒"""
+    sample = "王小明的 Email 是 test@example.com，電話 0912-345-678，API_KEY=sk-1234567890abcdef"
+    print("[預熱] 載入模型中…")
+    t0 = time.time()
+    errors = []
+    with contextlib.redirect_stdout(io.StringIO()):  # 預熱過程不印偵測細節
+        for is_code in (False, True):
+            try:
+                anonymize_text(sample, {}, is_code=is_code, save=False)
+            except Exception as e:
+                errors.append(f"[警告] 預熱失敗 (is_code={is_code})：{e}")
+    for msg in errors:
+        print(msg)
+    print(f"[預熱] 完成，耗時 {time.time() - t0:.1f} 秒")
