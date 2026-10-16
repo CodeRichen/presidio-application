@@ -1,100 +1,49 @@
 # -*- coding: utf-8 -*-
 """
-測試程式_多版本評分_檔案輸入版.py（放在 presidio 資料夾底下）
-====================================================================
-本檔案放置位置：  .../presidio/測試程式_多版本評分_檔案輸入版.py
-main.py / handler_text.py / handler_code.py / handler_media.py 位置：
-    .../ （presidio 的上一層）
+測試程式_多版本評分_檔案輸入版.py（放在 presidio 資料夾底下；main.py / handler_*.py 在上一層）
 
-執行時會用 input() 詢問要測試哪個檔案，可以輸入：
-    - .json                        ：跟以前一樣，裡面同時有 "article" 跟 "answer"，
-                                      走「文字/程式碼」流程：一次複製/貼上/還原三步驟
-                                      + 三種寬鬆程度評分(位置需重疊或完全一致)。
-    - .pdf / 圖片檔                ：**不自己重寫 OCR**，直接呼叫專案裡已經寫好的
-                                      handler_media.mask_pdf() / mask_image()，
-                                      用它回傳的 entries (value/label/score) 去跟
-                                      答案比對。因為圖片/PDF 沒有像文字一樣的線性
-                                      字元位置，所以比對邏輯改成「值有沒有重疊
-                                      (互為子字串)」而不是「位置區間重疊」。
-                                      這個分支只驗證「偵測有沒有準」，不驗證
-                                      main.py 的複製/貼上流程(那段跟 win32 相關，
-                                      跟 handler_media 本身的偵測準確度無關)。
+用法：python 測試程式_多版本評分_檔案輸入版.py [檔名]   （省略檔名則用 t1.json）
+    .json         : 含 "article" 與 "answer"，走文字/程式碼流程（複製→貼上→還原 + 三種評分）
+    .pdf / 圖片   : 呼叫 handler_media.mask_pdf / mask_image，答案取自同名 .json 的 "answer"，
+                    以「值是否重疊」取代位置比對（只驗證偵測，不驗證複製貼上流程）
 
-                                      因為是 pdf/圖片，答案檔裡沒有 article，
-                                      程式會再問一次「答案 json 檔名」，
-                                      裡面只需要 "answer"，例如：
-                                          { "answer": [["王小明", "PERSON"],
-                                                       ["0912345678", "PHONE"]] }
-
-輸入檔名時，只打檔名(不含路徑)會預設去這支程式所在的資料夾(presidio)裡找，
-也可以直接貼絕對路徑。
-
-pdf/圖片分支會直接 import 專案本身的 handler_media.py，所以請確保該檔頭說明
-的套件(pillow / pytesseract / pymupdf + Tesseract-OCR 主程式)都已經裝好。
-
-【本版異動】
-1) 配合 main.py 新增的 merge_overlaps(matches, prefer_zh) 簽名（重疊時依整段文字
-   是否含中文決定中/英模型優先序）以及候選改成 5 元素 tuple
-   (start, end, label, score, source)：detect_with_offsets() 現在會自己算出
-   prefer_zh 並傳進去，解包時也改成 5 個欄位（source 這裡用不到，直接捨棄）。
-2) 所有原本沒有包 try/except、一旦出錯會讓整支程式直接崩潰、看不到清楚錯誤訊息
-   的關鍵步驟（複製/貼上/還原、文字偵測、handler_media 呼叫、json 檔讀取），
-   都會攔截例外、用 traceback.print_exc() 印出完整錯誤訊息並標明是哪個步驟
-   失敗，再以 sys.exit(1) 結束，方便排查問題。
-3) pdf/圖片分支新增：在報告檔最前面先印出「OCR 原始辨識文字」(整份文件 OCR
-   實際看到的文字內容)，方便肉眼比對辨識有沒有跑掉、有沒有辨識成空白等。
-   這段擷取跟 handler_media.mask_pdf/mask_image 內部真正拿去比對答案的偵測
-   邏輯完全獨立、互不影響：就算這裡擷取失敗或跟 handler_media 內部辨識到的
-   不完全一樣，也不會影響下面版本一/二/三的評分結果。
+評分：
+    版本一  起訖位置完全一致 + 類型語意相同
+    版本二  範圍有重疊 + 類型語意相同（一對多、多對一視為同一個答案，不重複算誤判/漏判）
+    版本三  範圍有重疊即可，不看類型
+    「類型語意相同」見 LABEL_ALIASES（例如 PERSON = PERSON_NAME、PHONE_NUMBER = TW_PHONE）
 """
 import os
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")  # 避免不同套件各自帶的 OpenMP/MKL DLL 撞名衝突
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+import sys, json, time, types, tempfile, traceback, contextlib
 
-import re
-from dataclasses import dataclass
-from typing import Callable, Optional, List, Tuple
-import traceback
-
-# 刻意把 torch 提早載入，讓它先把自己的 c10.dll 等底層 DLL 初始化完成，
-# 避免之後 presidio_analyzer 拉進來的 spaCy/thinc/blis 先佔用同名但不同版本的底層庫，
-# 導致 torch 之後才載入時發生 [WinError 1114] DLL 初始化失敗。
-try:
+try:  # 先載入 torch，避免之後被 spaCy/thinc 的同名 DLL 搶先造成 [WinError 1114]
     import torch  # noqa: F401
 except Exception:
     pass
-
-# ---------- 英文：走 Presidio，含內建的規則式辨識器 (SSN/IBAN/信用卡/加密貨幣錢包/IP) + spaCy 英文 NER ----------
-try:
-    from presidio_analyzer import AnalyzerEngine
-except Exception as e:
-    print(f"Error importing AnalyzerEngine: {e}")
-    sys.exit(1)
-
-import sys
-import json
-import time
-import types
-import tempfile
-import traceback
-import contextlib
-
-# 這裡在最上面就先 import 真正的 pyperclip 並存成 _SYSTEM_PYPERCLIP。
-# run_text_flow() 裡面為了攔截 main.py 對剪貼簿的呼叫，會把 sys.modules["pyperclip"]
-# 換成假模組；但那只是「換掉 sys.modules 這個字典裡的項目」，不會影響我們現在
-# 已經拿到手的這個真實模組物件參照，所以之後要把結果表格複製到「系統」剪貼簿
-# (不是 main.py 用的那個假剪貼簿) 時，仍然要用 _SYSTEM_PYPERCLIP，不能用 pyperclip.copy()。
-try:
+try:  # 真正的 pyperclip（run_text_flow 會把 sys.modules["pyperclip"] 換成假的）
     import pyperclip as _SYSTEM_PYPERCLIP
 except Exception:
     _SYSTEM_PYPERCLIP = None
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))   # presidio 資料夾
-PARENT_DIR = os.path.dirname(SCRIPT_DIR)                  # main.py / handler_*.py 所在的上一層資料夾
-
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(SCRIPT_DIR))   # main.py / handler_*.py 所在資料夾
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".gif", ".webp"}
 PDF_EXTS = {".pdf"}
 
-sys.path.insert(0, PARENT_DIR)
+# 語意相同的類型視為同一類（正規化成左邊的名稱）
+LABEL_ALIASES = {
+    "PERSON_NAME": "PERSON",
+    "PHONE_NUMBER": "PHONE", "TW_PHONE": "PHONE",
+    "DATE_OF_BIRTH": "DATE", "DATE_TIME": "DATE",
+    "BANK_NAME": "ORGANIZATION",
+    "LOCATION": "ADDRESS",
+}
+VERSIONS = [  # (標題, 位置需完全一致, 類型需相同)
+    ("版本一：嚴格比對（起訖位置完全一致 + 類型語意相同）", True, True),
+    ("版本二：寬鬆比對（範圍有重疊即可，類型語意需相同）", False, True),
+    ("版本三：最寬鬆比對（範圍有重疊即算對，不論類型）", False, False),
+]
 
 
 @contextlib.contextmanager
@@ -103,556 +52,300 @@ def _silence_stdout():
         yield
 
 
-def _fail(step_name, exc):
-    """統一的錯誤印出格式：標明是哪個步驟失敗 + 完整 traceback，然後結束程式。"""
-    print(f"\n[錯誤] 「{step_name}」發生例外，程式中止：")
+def _fail(step):
+    print(f"\n[錯誤] 「{step}」發生例外，程式中止：")
     traceback.print_exc()
     sys.exit(1)
 
 
-def _resolve_path(filename):
-    """允許輸入絕對路徑，也允許只打檔名(預設去 presidio 資料夾底下找)。"""
-    filename = filename.strip().strip('"').strip("'")
-    if os.path.isabs(filename) and os.path.exists(filename):
-        return filename
-    candidate = os.path.join(SCRIPT_DIR, filename)
-    if os.path.exists(candidate):
-        return candidate
-    if os.path.exists(filename):
-        return os.path.abspath(filename)
+def _resolve_path(name):
+    name = name.strip().strip("\"'")
+    for p in (name, os.path.join(SCRIPT_DIR, name)):
+        if os.path.exists(p):
+            return os.path.abspath(p)
     return None
 
 
-def _prf(tp, fp, fn):
-    precision = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
-    recall = tp / (tp + fn) if (tp + fn) > 0 else float("nan")
-    if precision == precision and recall == recall and (precision + recall) > 0:
-        f1 = 2 * precision * recall / (precision + recall)
-    else:
-        f1 = float("nan")
-    return precision, recall, f1
-
-
-def _fmt_pct(x):
+def _pct(x):
     return f"{x:.2%}" if x == x else "N/A"
 
 
-_DESC_IN_PARENS_RE = None  # 惰性編譯，避免在檔案最上面又多 import re 的必要性判斷
+def _prf(tp, fp, fn):
+    p = tp / (tp + fp) if tp + fp else float("nan")
+    r = tp / (tp + fn) if tp + fn else float("nan")
+    f = 2 * p * r / (p + r) if p == p and r == r and p + r > 0 else float("nan")
+    return p, r, f
 
 
-def _extract_desc(title):
-    """把「版本一：嚴格比對（起訖位置 + 類型完全一致）」這種標題，
-    抽出括號裡的說明文字「起訖位置 + 類型完全一致」。抽不到就直接回傳原標題。"""
-    global _DESC_IN_PARENS_RE
-    if _DESC_IN_PARENS_RE is None:
-        import re
-        _DESC_IN_PARENS_RE = re.compile(r"（(.+)）")
-    m = _DESC_IN_PARENS_RE.search(title)
-    return m.group(1) if m else title
+# ---------------------------- 評分 ----------------------------
+# 項目格式統一為 (start, end, value, label)；圖片/PDF 沒有位置，start/end 為 None
+def _norm(label):
+    return LABEL_ALIASES.get(label, label)
 
 
-def _fmt_num(x):
-    return f"{x:.4f}" if x == x else "N/A"
+def _hit(e, d, exact, by_label):
+    (es, ee, ev, el), (ds, de, dv, dl) = e, d
+    if by_label and _norm(el) != _norm(dl):
+        return False
+    if es is None and ds is None:            # 圖片/PDF：比對值
+        ev, dv = ev.strip(), dv.strip()
+        return ev == dv if exact else bool(ev and dv and (ev in dv or dv in ev))
+    if es is None or ds is None:             # 答案在文章中找不到
+        return False
+    return (es, ee) == (ds, de) if exact else es < de and ds < ee
 
 
-def build_clipboard_table(rows):
-    """把三個版本的評分結果組成「貼上 Excel 會自動分欄」的表格文字：
-    欄位之間用 Tab 分隔、每列用換行分隔，這是 Excel 貼上時判斷分欄/分列的格式。
-    只放「比對機制與說明 / Precision / Recall / F1 Score」四欄，數字用小數(非百分比)，
-    這樣貼進 Excel 後可以直接被當成數字使用(例如拿去畫圖或再算平均)。
-    rows 是 (title, tp, fp, fn, precision, recall, f1) 的 list，tp/fp/fn 這裡不放進表格。"""
-    header = ["比對機制與說明", "Precision", "Recall", "F1 Score"]
-    lines = ["\t".join(header)]
-    for title, tp, fp, fn, precision, recall, f1 in rows:
-        lines.append("\t".join([
-            _extract_desc(title),
-            _fmt_num(precision),
-            _fmt_num(recall),
-            _fmt_num(f1),
-        ]))
-    return "\n".join(lines)
+def score(expected, detected, exact, by_label):
+    """回傳 (TP 數, 誤判清單, 漏判清單)。寬鬆版本中，與答案重疊的多餘偵測/被其他偵測涵蓋的答案不算誤判/漏判。"""
+    ok = lambda e, d: _hit(e, d, exact, by_label)
+    exp_left, det_left, tp = list(expected), list(detected), 0
+    for e in list(exp_left):
+        d = next((d for d in det_left if ok(e, d)), None)
+        if d:
+            exp_left.remove(e); det_left.remove(d); tp += 1
+    if not exact:
+        det_left = [d for d in det_left if not any(ok(e, d) for e in expected)]
+        exp_left = [e for e in exp_left if not any(ok(e, d) for d in detected)]
+    return tp, det_left, exp_left
 
 
-def copy_table_to_clipboard(table_text):
-    """複製到系統剪貼簿(用最上面存好的真實 pyperclip，不是 main.py 用的假剪貼簿)。
-    失敗只印警告，不中止程式——複製到剪貼簿失敗不影響報告檔已經寫好這件事。"""
-    if _SYSTEM_PYPERCLIP is None:
-        print("[警告] 找不到 pyperclip 套件，無法複製結果表格到剪貼簿(報告檔仍已正常寫入)")
-        return
+def evaluate(expected, detected, out):
+    """寫入三個版本的評分到 out，回傳 [(說明, P, R, F1)] 供複製到剪貼簿。"""
+    rows = []
+    for title, exact, by_label in VERSIONS:
+        tp, fp, fn = score(expected, detected, exact, by_label)
+        p, r, f = _prf(tp, len(fp), len(fn))
+        rows.append((title.split("（", 1)[-1].rstrip("）"), p, r, f))
+        out(f"\n{'-' * 78}\n{title}\n{'-' * 78}")
+        out(f"命中(TP): {tp}  誤判(FP): {len(fp)}  漏判(FN): {len(fn)}")
+        if fp:
+            out(f"誤判內容: {[(v, l) for _, _, v, l in fp]}")
+        if fn:
+            out(f"漏判內容: {[(v, l) for _, _, v, l in fn]}")
+        out(f"Precision: {_pct(p)}\nRecall   : {_pct(r)}\nF1 Score : {_pct(f)}")
+        out(f"結果: {'✔ 完全正確' if not fp and not fn else '✘ 有誤判或漏判'}")
+    return rows
+
+
+def finish(lines, rows, result_file):
+    """寫報告檔，並把 Tab 分隔的結果表格複製到系統剪貼簿（可直接貼 Excel）。"""
+    lines.append("=" * 78)
     try:
-        _SYSTEM_PYPERCLIP.copy(table_text)
-        print("[剪貼簿] 已複製本次評分表格，可直接貼到 Excel")
+        with open(result_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
     except Exception:
-        print("[警告] 複製結果表格到剪貼簿失敗（報告檔仍已正常寫入）：")
-        traceback.print_exc()
+        _fail(f"寫入報告檔 {result_file}")
+    print(f"報告已寫入：{result_file}")
+    n = lambda x: f"{x:.4f}" if x == x else "N/A"
+    table = "\n".join(["\t".join(["比對機制與說明", "Precision", "Recall", "F1 Score"])] +
+                      ["\t".join([d, n(p), n(r), n(f)]) for d, p, r, f in rows])
+    try:
+        _SYSTEM_PYPERCLIP.copy(table)
+        print("[剪貼簿] 已複製本次評分表格，可直接貼到 Excel")
+    except Exception as e:
+        print(f"[警告] 複製表格到剪貼簿失敗（報告檔已寫入）：{e}")
 
 
-# ============================== 分支一：json（文字/程式碼）==============================
+# ------------------------ 分支一：json（文字/程式碼）------------------------
 def run_text_flow(article, answer, result_file):
-    """跟原本「測試程式_多版本評分.py」完全一樣的流程：只是把輸出檔路徑改成參數傳入。"""
+    class FakeClipboard:
+        text, files = "", None
+    clip = FakeClipboard()
 
-    # ---------- 假模組區（僅取代 OS/GUI 邊界，main.py 的邏輯不動）----------
-    def _make_module(name, **attrs):
+    def fake(name, **attrs):
         m = types.ModuleType(name)
-        for k, v in attrs.items():
-            setattr(m, k, v)
+        m.__dict__.update(attrs)
         sys.modules[name] = m
         return m
 
-    class _FakeClipboard:
-        def __init__(self):
-            self.text = ""
-            self.files = None
+    # 只取代 OS/GUI 邊界；psutil、PIL、pytesseract、pymupdf 保持真實模組
+    fake("win32clipboard", OpenClipboard=lambda *a: None, CloseClipboard=lambda *a: None,
+         EmptyClipboard=lambda *a: None, SetClipboardData=lambda *a: None, CF_HDROP=15,
+         IsClipboardFormatAvailable=lambda fmt: clip.files is not None,
+         GetClipboardData=lambda fmt: clip.files)
+    fake("win32gui", GetForegroundWindow=lambda: 1, GetWindowText=lambda h: "MockWindow")
+    fake("win32process", GetWindowThreadProcessId=lambda h: (0, 1234))
+    fake("win32api", keybd_event=lambda *a: None)
+    fake("win32con", VK_MENU=18, VK_CONTROL=17, KEYEVENTF_KEYUP=2)
+    fake("pyperclip", copy=lambda t: setattr(clip, "text", t) or setattr(clip, "files", None),
+         paste=lambda: clip.text)
 
-        def set_text(self, text):
-            self.text = text
-            self.files = None
-
-    FAKE_CLIPBOARD = _FakeClipboard()
-
-    _make_module("win32clipboard",
-        OpenClipboard=lambda *a, **k: None, CloseClipboard=lambda *a, **k: None,
-        EmptyClipboard=lambda *a, **k: None,
-        IsClipboardFormatAvailable=lambda fmt: FAKE_CLIPBOARD.files is not None,
-        GetClipboardData=lambda fmt: FAKE_CLIPBOARD.files,
-        SetClipboardData=lambda fmt, data: None, CF_HDROP=15)
-    _make_module("win32gui", GetForegroundWindow=lambda: 1, GetWindowText=lambda h: "MockWindow")
-    _make_module("win32process", GetWindowThreadProcessId=lambda h: (0, 1234))
-    _make_module("win32api", keybd_event=lambda *a, **k: None)
-    _make_module("win32con", VK_MENU=18, VK_CONTROL=17, KEYEVENTF_KEYUP=2)
-
-    class _FakeProcess:
-        def __init__(self, pid): self.pid = pid
-        def name(self): return "mock_process.exe"
-
-    # 注意：psutil 這裡刻意「不」假造。main.py 對 psutil.Process(pid) 的呼叫本來就包在
-    # try/except 裡(找不到對應 pid 也只是印出「未知程式」，不影響偵測邏輯)，用真的 psutil
-    # 完全沒問題。反而如果像以前那樣用 types.ModuleType("psutil") 手動塞一個假模組進
-    # sys.modules，這個假模組沒有 __spec__，會讓 transformers 內部用
-    # importlib.util.find_spec("psutil") 檢查套件是否存在時直接丟 ValueError，
-    # 導致 presidio_analyzer 整條 import chain 炸掉，NLP 模型永遠載入失敗
-    # (被 handler_text.py 的 except Exception 吞掉，你完全看不到這個錯誤)。
-    _make_module("pyperclip",
-        copy=lambda text: FAKE_CLIPBOARD.set_text(text),
-        paste=lambda: FAKE_CLIPBOARD.text)
-
-    class _FakeGlobalHotKeys:
-        def __init__(self, mapping): self.mapping = mapping; self.running = False
-        def start(self): self.running = True
-        def stop(self): self.running = False
-
-    _make_module("pynput.keyboard", GlobalHotKeys=_FakeGlobalHotKeys)
-    _make_module("pynput", keyboard=sys.modules["pynput.keyboard"])
-    # 注意：這裡刻意「不」假造 PIL / pytesseract / pymupdf，
-    # 因為 main.py 會 import handler_media，而 handler_media 需要真的 PIL /
-    # pytesseract / pymupdf 才能運作；文字/程式碼流程用不到這三個套件的功能，
-    # 讓它們保持真的即可，不會影響這個分支的測試。
-    # ------------------------------------------------------------------------
+    class FakeHotKeys:
+        def __init__(self, mapping): pass
+        def start(self): pass
+        def stop(self): pass
+    fake("pynput", keyboard=fake("pynput.keyboard", GlobalHotKeys=FakeHotKeys))
 
     try:
-        import main  # noqa: E402  原封不動
+        import main
     except Exception:
-        _fail("匯入 main.py（請確認 main.py / handler_*.py 是否放在 presidio 的上一層資料夾）", None)
+        _fail("匯入 main.py（請確認 main.py / handler_*.py 在 presidio 的上一層資料夾）")
 
-    # ---- 暖機：先觸發一次偵測，把 NER 模型(以及可能的 registry fallback)載入完成，
-    #      這樣才不會把「模型第一次載入」的時間算進下面的正式計時。這裡故意不靜音，
-    #      讓你看得到載入過程有沒有跑完。----
-    print("\n[暖機] 觸發模型載入(僅第一次需要，不計入下方計時)...")
-    try:
-        _warmup_text = "暖機用測試文字 test123 test@example.com"
-        (main.handler_code if main.is_code_text(_warmup_text) else main.handler_text).detect(_warmup_text)
-    except Exception:
-        print("[暖機] 發生錯誤（暖機失敗不會中止程式，但下面的計時可能包含模型載入時間）：")
-        traceback.print_exc()
-    print("[暖機] 完成，開始正式測試\n")
-
-    def detect_with_offsets(text):
-        # main.py 目前的 merge_overlaps(matches, prefer_zh) 需要額外傳入 prefer_zh
-        # (整段文字是否含中文，用來決定重疊時中/英模型誰優先)；
-        # 候選也已經是 5 元素 tuple (start, end, label, score, source)，
-        # source 這裡不需要，解包時直接捨棄即可。
+    def detect(text):
         try:
             is_code = main.is_code_text(text)
-            matches = main.handler_code.detect(text) if is_code else main.handler_text.detect(text)
-            prefer_zh = main.handler_text.contains_chinese(text)
-            matches = main.merge_overlaps(matches, prefer_zh)
+            h = main.handler_code if is_code else main.handler_text
+            matches = main.merge_overlaps(h.detect(text), main.handler_text.contains_chinese(text))
         except Exception:
-            _fail("文字/程式碼偵測 detect_with_offsets", None)
-        detected = [(s, e, text[s:e], label) for s, e, label, score, source in matches]
-        return is_code, detected
+            _fail("文字/程式碼偵測")
+        return is_code, [(s, e, text[s:e], label) for s, e, label, *_ in matches]
 
-    def locate_expected(article, answer):
-        located = []
-        cursor_by_value = {}
-        for value, label in answer:
-            start_from = cursor_by_value.get(value, 0)
-            idx = article.find(value, start_from)
-            if idx == -1:
-                idx = article.find(value)
-            if idx == -1:
-                located.append((None, None, value, label))
-                continue
-            cursor_by_value[value] = idx + 1
-            located.append((idx, idx + len(value), value, label))
-        return located
+    def timed(step, fn):
+        t = time.perf_counter()
+        try:
+            with _silence_stdout():
+                fn()
+        except Exception:
+            _fail(step)
+        return (time.perf_counter() - t) * 1000
 
-    def _overlaps(a_start, a_end, b_start, b_end):
-        if a_start is None or b_start is None:
-            return False
-        return a_start < b_end and b_start < a_end
+    print("\n[暖機] 載入模型中（不計入計時）...")
+    detect("暖機用測試文字 test123 test@example.com")
+    print("[暖機] 完成\n")
 
-    def score_version(expected_located, detected, *, require_exact_span, require_label):
-        exp_left = list(expected_located)
-        det_left = list(detected)
-        tp_pairs = []
-        for exp in list(exp_left):
-            es, ee, ev, el = exp
-            found = None
-            for det in det_left:
-                ds, de, dv, dl = det
-                span_ok = (es == ds and ee == de) if require_exact_span else _overlaps(es, ee, ds, de)
-                label_ok = (dl == el) if require_label else True
-                if span_ok and label_ok:
-                    found = det
-                    break
-            if found:
-                tp_pairs.append((exp, found))
-                exp_left.remove(exp)
-                det_left.remove(found)
-        return tp_pairs, det_left, exp_left
-
-    mapping = {}
-    lines = []
-    def out(s=""): lines.append(s)
-
+    lines, mapping = [], {}
+    out = lines.append
     out("=" * 78)
     out("剪貼簿敏感資訊防護 - 單篇文章 一次複製/貼上 測試報告（多版本評分）")
     out(f"文章長度：{len(article)} 字元　答案筆數：{len(answer)}")
     out("=" * 78)
 
-    FAKE_CLIPBOARD.set_text(article)
-    t0 = time.perf_counter()
-    try:
-        with _silence_stdout():
-            main.on_copy(mapping)
-    except Exception:
-        _fail("複製(on_copy) - 整篇偵測+遮蔽", None)
-    t1 = time.perf_counter()
-    masked_text = FAKE_CLIPBOARD.text
+    clip.text = article
+    t_copy = timed("複製(on_copy)", lambda: main.on_copy(mapping))
+    masked = clip.text
+    t_paste = timed("貼上(on_paste)", lambda: main.on_paste(mapping))
+    unchanged = clip.text == masked
+    clip.text = masked
+    t_restore = timed("還原(第二次 on_copy)", lambda: main.on_copy(mapping))
+    restored_ok = clip.text == article
 
-    t2 = time.perf_counter()
-    try:
-        with _silence_stdout():
-            main.on_paste(mapping)
-    except Exception:
-        _fail("貼上(on_paste)", None)
-    t3 = time.perf_counter()
-    paste_unchanged = (FAKE_CLIPBOARD.text == masked_text)
-
-    FAKE_CLIPBOARD.set_text(masked_text)
-    t4 = time.perf_counter()
-    try:
-        with _silence_stdout():
-            main.on_copy(mapping)
-    except Exception:
-        _fail("還原(第二次 on_copy)", None)
-    t5 = time.perf_counter()
-    restored_text = FAKE_CLIPBOARD.text
-    restored_ok = (restored_text == article)
-
-    out("")
-    out(f"[複製] 整篇偵測+遮蔽耗時: {(t1-t0)*1000:.3f} ms")
-    out(f"[貼上] 耗時: {(t3-t2)*1000:.3f} ms | 剪貼簿內容維持不變(符合 on_paste 設計): {'OK' if paste_unchanged else 'FAIL'}")
-    out(f"[還原] 複製回來耗時: {(t5-t4)*1000:.3f} ms | 完全還原成原始文章: {'OK' if restored_ok else 'FAIL'}")
+    out(f"\n[複製] 整篇偵測+遮蔽耗時: {t_copy:.3f} ms")
+    out(f"[貼上] 耗時: {t_paste:.3f} ms | 剪貼簿內容維持不變: {'OK' if unchanged else 'FAIL'}")
+    out(f"[還原] 耗時: {t_restore:.3f} ms | 完全還原成原始文章: {'OK' if restored_ok else 'FAIL'}")
     if not restored_ok:
-        out(f"  還原後長度 {len(restored_text)} vs 原始長度 {len(article)}")
+        out(f"  還原後長度 {len(clip.text)} vs 原始長度 {len(article)}")
 
-    is_code, detected = detect_with_offsets(article)
-    expected_located = locate_expected(article, answer)
-    out(f"[分類] 文章整體判斷: {'程式碼' if is_code else '一般文字'}")
-
-    out("")
-    out(f"解答共 {len(answer)} 筆: {answer}")
-    out(f"實際偵測到 {len(detected)} 筆: {[(t, l) for _, _, t, l in detected]}")
-
-    versions = [
-        ("版本一：嚴格比對（起訖位置 + 類型完全一致）", dict(require_exact_span=True, require_label=True)),
-        ("版本二：寬鬆比對（範圍有重疊即可，但類型需正確）", dict(require_exact_span=False, require_label=True)),
-        ("版本三：最寬鬆比對（範圍有重疊即算對，不論類型）", dict(require_exact_span=False, require_label=False)),
-    ]
-    table_rows = []
-    for title, kwargs in versions:
-        tp_pairs, fp_left, fn_left = score_version(expected_located, detected, **kwargs)
-        precision, recall, f1 = _prf(len(tp_pairs), len(fp_left), len(fn_left))
-        table_rows.append((title, len(tp_pairs), len(fp_left), len(fn_left), precision, recall, f1))
-        out("")
-        out("-" * 78)
-        out(title)
-        out("-" * 78)
-        out(f"命中(TP): {len(tp_pairs)}  誤判(FP): {len(fp_left)}  漏判(FN): {len(fn_left)}")
-        if fp_left:
-            out(f"誤判內容: {[(t, l) for _, _, t, l in fp_left]}")
-        if fn_left:
-            out(f"漏判內容: {[(v, l) for _, _, v, l in fn_left]}")
-        out(f"Precision: {_fmt_pct(precision)}")
-        out(f"Recall   : {_fmt_pct(recall)}")
-        out(f"F1 Score : {_fmt_pct(f1)}")
-        out(f"結果: {'✔ 完全正確' if not fp_left and not fn_left else '✘ 有誤判或漏判'}")
-
-    out("")
-    out("=" * 78)
-
-    try:
-        with open(result_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
-    except Exception:
-        _fail(f"寫入報告檔 {result_file}", None)
-    print(f"報告已寫入：{result_file}")
-
-    copy_table_to_clipboard(build_clipboard_table(table_rows))
-
-
-# ============================== 分支二：pdf / 圖片 ==============================
-def _value_overlap(a, b):
-    """圖片/PDF 沒有線性字元位置可比對，改用「值互為子字串」當作等同於位置重疊。"""
-    a, b = (a or "").strip(), (b or "").strip()
-    if not a or not b:
-        return False
-    return a in b or b in a
-
-
-def score_media(expected, detected, *, require_exact_value, require_label):
-    """
-    require_exact_value=True  -> 版本一：值完全一致
-    require_exact_value=False -> 版本二/三：值有重疊(互為子字串)即可
-    require_label=True        -> 版本一、二：類型要一致
-    require_label=False       -> 版本三：類型不看
-    """
-    exp_left = list(expected)
-    det_left = list(detected)
-    tp_pairs = []
-    for exp in list(exp_left):
-        ev, el = exp
-        found = None
-        for det in det_left:
-            dv, dl = det
-            value_ok = (ev.strip() == dv.strip()) if require_exact_value else _value_overlap(ev, dv)
-            label_ok = (dl == el) if require_label else True
-            if value_ok and label_ok:
-                found = det
-                break
-        if found:
-            tp_pairs.append((exp, found))
-            exp_left.remove(exp)
-            det_left.remove(found)
-    return tp_pairs, det_left, exp_left
-
-
-def _words_to_text(handler_media, words):
-    """把 ocr_words() 回傳的 word list 依行組回可讀文字：先用 handler_media 自己的
-    _group_lines() 依 line_id 分組(這是 Windows OCR 原生提供的分行資訊，比自己猜行準)，
-    行內詞之間用空白接起來，行與行之間用換行分隔。"""
-    lines = handler_media._group_lines(words)
-    return "\n".join(" ".join(w["text"] for w in line) for line in lines)
-
-
-def _ocr_raw_text_for_display(handler_media, path, ext, scanned_zoom=2.0):
-    """在報告最前面顯示「OCR 實際辨識出的原始文字」，方便肉眼比對辨識有沒有跑掉、
-    有沒有整頁辨識成空白等狀況。
-
-    刻意直接借用 handler_media.py 本身已經寫好的 Windows 原生 OCR 相關函式
-    (preprocess_for_ocr / ocr_words / _group_lines / _page_has_text)，跟
-    handler_media.mask_pdf/mask_image 內部真正拿去比對答案的偵測邏輯是同一顆
-    OCR 引擎、同一套前處理，不是另外裝一套 Tesseract 之類的東西——這個專案本來
-    就沒有用到 Tesseract，環境也沒裝，用 pytesseract 一定會報 TesseractNotFoundError。
-
-    這裡只是「多組一次可讀文字」用來顯示，不判斷敏感與否、也不塗黑，跟下面正式
-    的偵測+評分流程完全獨立：就算這裡擷取失敗，也不會影響版本一/二/三的評分結果。
-    """
-    try:
-        if ext in PDF_EXTS:
-            doc = handler_media.fitz.open(path)
-            try:
-                page_texts = []
-                for page in doc:
-                    if handler_media._page_has_text(page):
-                        # 跟 mask_pdf 判斷這頁是否有內嵌文字層的邏輯一致，有的話直接用最準。
-                        embedded = page.get_text().strip()
-                        page_texts.append(f"--- 第 {page.number + 1} 頁（PDF 內嵌文字層，非 OCR）---\n{embedded}")
-                    else:
-                        # 掃描頁：比照 handler_media 內部 OCR 的做法，先轉成圖片、
-                        # 前處理，再用 Windows OCR 辨識。
-                        pix = page.get_pixmap(matrix=handler_media.fitz.Matrix(scanned_zoom, scanned_zoom),
-                                               annots=False)
-                        img = handler_media.Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-                        processed, _ = handler_media.preprocess_for_ocr(img)
-                        words = handler_media.ocr_words(processed)
-                        text = _words_to_text(handler_media, words)
-                        page_texts.append(f"--- 第 {page.number + 1} 頁（Windows OCR 辨識）---\n"
-                                           f"{text or '(本頁 OCR 結果為空白)'}")
-                return "\n\n".join(page_texts) if page_texts else "(空白/無法辨識)"
-            finally:
-                doc.close()
+    is_code, detected = detect(article)
+    expected, cursor = [], {}
+    for value, label in answer:   # 同值多次出現時，依序對應到不同位置
+        idx = article.find(value, cursor.get(value, 0))
+        if idx == -1:
+            idx = article.find(value)
+        if idx == -1:
+            expected.append((None, None, value, label))
         else:
-            img = handler_media.Image.open(path).convert("RGB")
-            processed, _ = handler_media.preprocess_for_ocr(img)
-            words = handler_media.ocr_words(processed)
-            text = _words_to_text(handler_media, words)
-            return text or "(OCR 結果為空白)"
+            cursor[value] = idx + 1
+            expected.append((idx, idx + len(value), value, label))
+
+    out(f"[分類] 文章整體判斷: {'程式碼' if is_code else '一般文字'}")
+    out(f"\n解答共 {len(answer)} 筆: {answer}")
+    out(f"實際偵測到 {len(detected)} 筆: {[(v, l) for _, _, v, l in detected]}")
+    finish(lines, evaluate(expected, detected, out), result_file)
+
+
+# ---------------------------- 分支二：pdf / 圖片 ----------------------------
+def _ocr_raw_text(hm, path, ext, zoom=2.0):
+    """用 handler_media 自己的 Windows OCR 取得原始辨識文字，僅供報告開頭肉眼比對，不影響評分。"""
+    def ocr(img):
+        words = hm.ocr_words(hm.preprocess_for_ocr(img)[0])
+        return "\n".join(" ".join(w["text"] for w in line) for line in hm._group_lines(words))
+    try:
+        if ext not in PDF_EXTS:
+            return ocr(hm.Image.open(path).convert("RGB")) or "(OCR 結果為空白)"
+        doc, pages = hm.fitz.open(path), []
+        try:
+            for page in doc:
+                if hm._page_has_text(page):
+                    pages.append(f"--- 第 {page.number + 1} 頁（PDF 內嵌文字層）---\n{page.get_text().strip()}")
+                else:
+                    pix = page.get_pixmap(matrix=hm.fitz.Matrix(zoom, zoom), annots=False)
+                    img = hm.Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                    pages.append(f"--- 第 {page.number + 1} 頁（Windows OCR）---\n{ocr(img) or '(本頁 OCR 結果為空白)'}")
+        finally:
+            doc.close()
+        return "\n\n".join(pages) or "(空白/無法辨識)"
     except Exception:
-        return ("(OCR 原始文字擷取失敗，以下是完整錯誤訊息；這不影響下方 handler_media "
-                "的偵測與評分結果)\n" + traceback.format_exc())
+        return "(OCR 原始文字擷取失敗；不影響下方評分)\n" + traceback.format_exc()
 
 
 def run_media_flow(path, answer, result_file):
-    """直接呼叫專案裡已經寫好的 handler_media.mask_pdf / mask_image，不自己重寫 OCR。"""
     try:
-        import handler_media
+        import handler_media as hm
     except Exception:
-        _fail("匯入 handler_media.py（請確認它跟 main.py 放在同一個資料夾，"
-              "且已安裝 pillow / pytesseract / pymupdf 與 Tesseract-OCR 主程式）", None)
+        _fail("匯入 handler_media.py（請確認與 main.py 同資料夾且相關套件已安裝）")
 
     ext = os.path.splitext(path)[1].lower()
-    stem = os.path.splitext(os.path.basename(path))[0]
-
-    # 輸出檔跟對照表都丟到獨立的暫存資料夾，不動到正式環境的 handler_media.DEFAULT_MAP_FILE
+    func = hm.mask_pdf if ext in PDF_EXTS else hm.mask_image
     tmp_dir = tempfile.mkdtemp(prefix="presidio_media_test_")
-    output_path = os.path.join(tmp_dir, f"{stem}_masked{ext}")
-    map_file = os.path.join(tmp_dir, "media_test_map.json")
+    output = os.path.join(tmp_dir, f"{os.path.splitext(os.path.basename(path))[0]}_masked{ext}")
 
-    print(f"呼叫 handler_media 進行偵測 + 遮蔽... (輸出: {output_path})")
-
-    # ---- 暖機：先觸發一次偵測，把 NER 模型載入完成，避免第一次載入時間被算進下面的計時。----
-    print("[暖機] 觸發模型載入(僅第一次需要，不計入下方計時)...")
+    print("[暖機] 載入模型中（不計入計時）...")
     try:
-        handler_media.detect_matches("暖機用測試文字 test123 test@example.com")
+        hm.detect_matches("暖機用測試文字 test123 test@example.com")
     except Exception:
-        print("[暖機] 發生錯誤（暖機失敗不會中止程式，但下面的計時可能包含模型載入時間）：")
         traceback.print_exc()
-    print("[暖機] 完成，開始正式測試")
+    print("[OCR] 擷取原始辨識文字...")
+    raw_text = _ocr_raw_text(hm, path, ext)
 
-    # ---- 額外附加：擷取 OCR 原始辨識文字，僅供報告最前面顯示參考，跟下面正式的
-    #      偵測+評分流程完全獨立，不會影響也不會被計入下面的計時。----
-    print("[OCR] 正在擷取原始辨識文字，供報告最前面顯示參考(不影響偵測評分邏輯)...")
-    raw_ocr_text = _ocr_raw_text_for_display(handler_media, path, ext)
-    print("[OCR] 擷取完成")
-
-    t0 = time.perf_counter()
+    t = time.perf_counter()
     try:
-        if ext in PDF_EXTS:
-            entries = handler_media.mask_pdf(path, output_path, map_file)
-        else:
-            entries = handler_media.mask_image(path, output_path, map_file)
+        entries = func(path, output, os.path.join(tmp_dir, "media_test_map.json"))
     except Exception:
-        _fail(f"handler_media.{'mask_pdf' if ext in PDF_EXTS else 'mask_image'} 偵測+遮蔽", None)
-    t1 = time.perf_counter()
+        _fail(f"handler_media.{func.__name__} 偵測+遮蔽")
+    elapsed = (time.perf_counter() - t) * 1000
 
-    detected = [((e.get("value") or "").strip(), e["label"]) for e in entries]
-    expected = [(str(v).strip(), lbl) for v, lbl in answer]
+    detected = [(None, None, (e.get("value") or "").strip(), e["label"]) for e in entries]
+    expected = [(None, None, str(v).strip(), l) for v, l in answer]
 
     lines = []
-    def out(s=""): lines.append(s)
-
-    # ---- 報告最前面：先印 OCR 原始辨識文字，方便肉眼比對 ----
+    out = lines.append
     out("=" * 78)
-    out("[OCR 原始辨識文字]（僅供肉眼比對參考，跟下方偵測評分邏輯完全獨立）")
+    out("[OCR 原始辨識文字]（僅供肉眼比對，與下方評分獨立）")
     out("-" * 78)
-    out(raw_ocr_text)
+    out(raw_text)
     out("=" * 78)
-    out("")
-
-    out("=" * 78)
+    out("\n" + "=" * 78)
     out("剪貼簿敏感資訊防護 - 圖片/PDF 偵測測試報告（多版本評分，透過 handler_media）")
-    out(f"輸入檔案：{path}")
-    out(f"答案筆數：{len(expected)}")
+    out(f"輸入檔案：{path}\n答案筆數：{len(expected)}")
     out("=" * 78)
-    out("")
-    out(f"[偵測+遮蔽] handler_media.{'mask_pdf' if ext in PDF_EXTS else 'mask_image'} 耗時: {(t1-t0)*1000:.3f} ms")
-    out("")
-    out(f"解答共 {len(expected)} 筆: {expected}")
-    out(f"實際偵測到 {len(detected)} 筆: {detected}")
-
-    versions = [
-        ("版本一：嚴格比對（值完全一致 + 類型完全一致）", dict(require_exact_value=True, require_label=True)),
-        ("版本二：寬鬆比對（值有重疊即可，但類型需正確）", dict(require_exact_value=False, require_label=True)),
-        ("版本三：最寬鬆比對（值有重疊即算對，不論類型）", dict(require_exact_value=False, require_label=False)),
-    ]
-    table_rows = []
-    for title, kwargs in versions:
-        tp_pairs, fp_left, fn_left = score_media(expected, detected, **kwargs)
-        precision, recall, f1 = _prf(len(tp_pairs), len(fp_left), len(fn_left))
-        table_rows.append((title, len(tp_pairs), len(fp_left), len(fn_left), precision, recall, f1))
-        out("")
-        out("-" * 78)
-        out(title)
-        out("-" * 78)
-        out(f"命中(TP): {len(tp_pairs)}  誤判(FP): {len(fp_left)}  漏判(FN): {len(fn_left)}")
-        if fp_left:
-            out(f"誤判內容: {fp_left}")
-        if fn_left:
-            out(f"漏判內容: {fn_left}")
-        out(f"Precision: {_fmt_pct(precision)}")
-        out(f"Recall   : {_fmt_pct(recall)}")
-        out(f"F1 Score : {_fmt_pct(f1)}")
-        out(f"結果: {'✔ 完全正確' if not fp_left and not fn_left else '✘ 有誤判或漏判'}")
-
-    out("")
-    out(f"(遮蔽後檔案與對照表存在暫存資料夾，僅供檢查，不影響正式環境: {tmp_dir})")
-    out("=" * 78)
-
-    try:
-        with open(result_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
-    except Exception:
-        _fail(f"寫入報告檔 {result_file}", None)
-    print(f"報告已寫入：{result_file}")
-
-    copy_table_to_clipboard(build_clipboard_table(table_rows))
+    out(f"\n[偵測+遮蔽] handler_media.{func.__name__} 耗時: {elapsed:.3f} ms")
+    out(f"\n解答共 {len(expected)} 筆: {[(v, l) for _, _, v, l in expected]}")
+    out(f"實際偵測到 {len(detected)} 筆: {[(v, l) for _, _, v, l in detected]}")
+    rows = evaluate(expected, detected, out)
+    out(f"\n(遮蔽後檔案存在暫存資料夾: {tmp_dir})")
+    finish(lines, rows, result_file)
 
 
-# ============================== 進入點 ==============================
+# ------------------------------- 進入點 -------------------------------
 def main_test():
-    # raw = input("請輸入要測試的檔案名稱（json / pdf / 圖片檔，可直接打檔名或完整路徑）：")
-    raw = 't1.png'
+    raw = sys.argv[1] if len(sys.argv) > 1 else "t1.png"
     path = _resolve_path(raw)
     if path is None:
-        print(f"[錯誤] 找不到檔案：{raw}")
-        sys.exit(1)
-
-    ext = os.path.splitext(path)[1].lower()
-    filename = os.path.basename(path)
-    name, ext = os.path.splitext(filename)
-    stem = name + "_" + ext.lstrip(".")
-    result_file = os.path.join(SCRIPT_DIR, f"{stem}_result.txt")
+        sys.exit(f"[錯誤] 找不到檔案：{raw}")
+    stem, ext = os.path.splitext(os.path.basename(path))
+    ext = ext.lower()
+    result_file = os.path.join(SCRIPT_DIR, f"{stem}_{ext.lstrip('.')}_result.txt")
 
     if ext == ".json":
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-            article = data["article"]
-            answer = data["answer"]
+            article, answer = data["article"], data["answer"]
         except Exception:
-            _fail(f"讀取測試檔 {path}（請確認是合法 JSON，且含有 article / answer 欄位）", None)
+            _fail(f"讀取測試檔 {path}（需為合法 JSON，含 article / answer）")
         run_text_flow(article, answer, result_file)
-
-    elif ext in PDF_EXTS or ext in IMAGE_EXTS:
-        # ans_raw = input("請輸入對應的答案 json 檔名：")
-        ans_raw = raw.replace(ext, ".json")  # 預設答案檔名跟輸入檔同名，只是副檔名改成 .json
-        ans_path = _resolve_path(ans_raw)
+    elif ext in PDF_EXTS | IMAGE_EXTS:
+        ans_path = _resolve_path(os.path.splitext(raw)[0] + ".json")
         if ans_path is None:
-            print(f"[錯誤] 找不到答案檔：{ans_raw}")
-            sys.exit(1)
+            sys.exit(f"[錯誤] 找不到答案檔：{os.path.splitext(raw)[0]}.json")
         try:
             with open(ans_path, encoding="utf-8") as f:
-                ans_data = json.load(f)
-            answer = ans_data["answer"]
+                answer = json.load(f)["answer"]
         except Exception:
-            _fail(f"讀取答案檔 {ans_path}（請確認是合法 JSON，且含有 answer 欄位）", None)
+            _fail(f"讀取答案檔 {ans_path}（需為合法 JSON，含 answer）")
         run_media_flow(path, answer, result_file)
-
     else:
-        print(f"[錯誤] 不支援的檔案類型：{ext}")
-        sys.exit(1)
+        sys.exit(f"[錯誤] 不支援的檔案類型：{ext}")
 
 
 if __name__ == "__main__":
