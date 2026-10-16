@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-測試程式_多版本評分_檔案輸入版.py（放在 presidio 資料夾底下；main.py / handler_*.py 在上一層）
+測試程式_多版本評分_檔案輸入版.py（放在 presidio 資料夾底下；core.py / handler_*.py 在上一層）
 
 用法：python 測試程式_多版本評分_檔案輸入版.py [檔名]   （省略檔名則用 t1.json）
-    .json         : 含 "article" 與 "answer"，走文字/程式碼流程（複製→貼上→還原 + 三種評分）
+    .json         : 含 "article" 與 "answer"，走文字/程式碼流程
+                    （core.anonymize_text 遮蔽 -> core.deanonymize_text 還原 + 三種評分）
     .pdf / 圖片   : 呼叫 handler_media.mask_pdf / mask_image，答案取自同名 .json 的 "answer"，
-                    以「值是否重疊」取代位置比對（只驗證偵測，不驗證複製貼上流程）
+                    以「值是否重疊」取代位置比對（只驗證偵測）
+
+說明：
+    這版直接呼叫 core.py，不再 import main.py，也不再假造 win32 / pyperclip / pynput 模組。
+    快速鍵、模擬貼上、剪貼簿同步屬於 main.py 的流程，不在這支測試範圍內。
+    遮蔽時用 save=False，不會把對照表寫到硬碟上。
 
 評分：
     版本一  起訖位置完全一致 + 類型語意相同
@@ -15,19 +21,19 @@
 """
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-import sys, json, time, types, tempfile, traceback, contextlib
+import sys, json, time, tempfile, traceback, contextlib
 
 try:  # 先載入 torch，避免之後被 spaCy/thinc 的同名 DLL 搶先造成 [WinError 1114]
     import torch  # noqa: F401
 except Exception:
     pass
-try:  # 真正的 pyperclip（run_text_flow 會把 sys.modules["pyperclip"] 換成假的）
+try:  # 評分表格複製到系統剪貼簿用
     import pyperclip as _SYSTEM_PYPERCLIP
 except Exception:
     _SYSTEM_PYPERCLIP = None
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(SCRIPT_DIR))   # main.py / handler_*.py 所在資料夾
+sys.path.insert(0, os.path.dirname(SCRIPT_DIR))   # core.py / handler_*.py 所在資料夾
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".gif", ".webp"}
 PDF_EXTS = {".pdf"}
 
@@ -148,44 +154,21 @@ def finish(lines, rows, result_file):
 
 # ------------------------ 分支一：json（文字/程式碼）------------------------
 def run_text_flow(article, answer, result_file):
-    class FakeClipboard:
-        text, files = "", None
-    clip = FakeClipboard()
-
-    def fake(name, **attrs):
-        m = types.ModuleType(name)
-        m.__dict__.update(attrs)
-        sys.modules[name] = m
-        return m
-
-    # 只取代 OS/GUI 邊界；psutil、PIL、pytesseract、pymupdf 保持真實模組
-    fake("win32clipboard", OpenClipboard=lambda *a: None, CloseClipboard=lambda *a: None,
-         EmptyClipboard=lambda *a: None, SetClipboardData=lambda *a: None, CF_HDROP=15,
-         IsClipboardFormatAvailable=lambda fmt: clip.files is not None,
-         GetClipboardData=lambda fmt: clip.files)
-    fake("win32gui", GetForegroundWindow=lambda: 1, GetWindowText=lambda h: "MockWindow")
-    fake("win32process", GetWindowThreadProcessId=lambda h: (0, 1234))
-    fake("win32api", keybd_event=lambda *a: None)
-    fake("win32con", VK_MENU=18, VK_CONTROL=17, KEYEVENTF_KEYUP=2)
-    fake("pyperclip", copy=lambda t: setattr(clip, "text", t) or setattr(clip, "files", None),
-         paste=lambda: clip.text)
-
-    class FakeHotKeys:
-        def __init__(self, mapping): pass
-        def start(self): pass
-        def stop(self): pass
-    fake("pynput", keyboard=fake("pynput.keyboard", GlobalHotKeys=FakeHotKeys))
-
     try:
-        import main
+        import core
     except Exception:
-        _fail("匯入 main.py（請確認 main.py / handler_*.py 在 presidio 的上一層資料夾）")
+        _fail("匯入 core.py（請確認 core.py / handler_*.py 在 presidio 的上一層資料夾）")
 
     def detect(text):
+        """與 core.anonymize_text 相同的偵測 + 重疊處理，但回傳位置供評分用。"""
         try:
-            is_code = main.is_code_text(text)
-            h = main.handler_code if is_code else main.handler_text
-            matches = main.merge_overlaps(h.detect(text), main.handler_text.contains_chinese(text))
+            with _silence_stdout():
+                is_code = core.is_code_text(text)
+                h = core.handler_code if is_code else core.handler_text
+                matches = list(h.detect(text))
+                if core.handler_field is not None:
+                    matches += list(core.handler_field.detect(text))
+                matches = core.merge_overlaps(matches, core.handler_text.contains_chinese(text))
         except Exception:
             _fail("文字/程式碼偵測")
         return is_code, [(s, e, text[s:e], label) for s, e, label, *_ in matches]
@@ -194,36 +177,40 @@ def run_text_flow(article, answer, result_file):
         t = time.perf_counter()
         try:
             with _silence_stdout():
-                fn()
+                result = fn()
         except Exception:
             _fail(step)
-        return (time.perf_counter() - t) * 1000
+        return (time.perf_counter() - t) * 1000, result
 
     print("\n[暖機] 載入模型中（不計入計時）...")
+    try:
+        with _silence_stdout():
+            core.warmup()
+    except Exception:
+        _fail("core.warmup")
     detect("暖機用測試文字 test123 test@example.com")
     print("[暖機] 完成\n")
 
     lines, mapping = [], {}
     out = lines.append
     out("=" * 78)
-    out("剪貼簿敏感資訊防護 - 單篇文章 一次複製/貼上 測試報告（多版本評分）")
+    out("剪貼簿敏感資訊防護 - 單篇文章 遮蔽/還原 測試報告（多版本評分，透過 core）")
     out(f"文章長度：{len(article)} 字元　答案筆數：{len(answer)}")
     out("=" * 78)
 
-    clip.text = article
-    t_copy = timed("複製(on_copy)", lambda: main.on_copy(mapping))
-    masked = clip.text
-    t_paste = timed("貼上(on_paste)", lambda: main.on_paste(mapping))
-    unchanged = clip.text == masked
-    clip.text = masked
-    t_restore = timed("還原(第二次 on_copy)", lambda: main.on_copy(mapping))
-    restored_ok = clip.text == article
+    # 遮蔽 (save=False：不寫對照表檔到硬碟)；沒偵測到任何內容時 anonymize_text 回傳 None
+    t_mask, masked = timed("遮蔽(core.anonymize_text)",
+                           lambda: core.anonymize_text(article, mapping, is_code=None, save=False))
+    masked = masked if masked is not None else article
+    t_restore, restored = timed("還原(core.deanonymize_text)",
+                                lambda: core.deanonymize_text(masked, mapping))
+    restored_ok = restored == article
 
-    out(f"\n[複製] 整篇偵測+遮蔽耗時: {t_copy:.3f} ms")
-    out(f"[貼上] 耗時: {t_paste:.3f} ms | 剪貼簿內容維持不變: {'OK' if unchanged else 'FAIL'}")
+    out(f"\n[遮蔽] 整篇偵測+遮蔽耗時: {t_mask:.3f} ms | 對照表筆數: {len(mapping)}")
     out(f"[還原] 耗時: {t_restore:.3f} ms | 完全還原成原始文章: {'OK' if restored_ok else 'FAIL'}")
     if not restored_ok:
-        out(f"  還原後長度 {len(clip.text)} vs 原始長度 {len(article)}")
+        out(f"  還原後長度 {len(restored)} vs 原始長度 {len(article)}")
+    out("(快速鍵 / 貼上流程屬於 main.py，不在此測試範圍)")
 
     is_code, detected = detect(article)
     expected, cursor = [], {}
@@ -272,7 +259,7 @@ def run_media_flow(path, answer, result_file):
     try:
         import handler_media as hm
     except Exception:
-        _fail("匯入 handler_media.py（請確認與 main.py 同資料夾且相關套件已安裝）")
+        _fail("匯入 handler_media.py（請確認與 core.py 同資料夾且相關套件已安裝）")
 
     ext = os.path.splitext(path)[1].lower()
     func = hm.mask_pdf if ext in PDF_EXTS else hm.mask_image
@@ -318,7 +305,7 @@ def run_media_flow(path, answer, result_file):
 
 # ------------------------------- 進入點 -------------------------------
 def main_test():
-    raw = sys.argv[1] if len(sys.argv) > 1 else "t1.png"
+    raw = sys.argv[1] if len(sys.argv) > 1 else "t1.json"
     path = _resolve_path(raw)
     if path is None:
         sys.exit(f"[錯誤] 找不到檔案：{raw}")
