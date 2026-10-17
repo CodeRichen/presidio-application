@@ -1,17 +1,19 @@
 規範:
 
+請勿修改歷史紀錄
+測試模型性能統一使用json_test.py，或依照其方法修改json_test.py，選擇recall較高的結果
+新功能另建新檔以舊檔呼叫
 建議使用.venv，但須寫入.gitignore
 將含個資測試資料放在presidio/real資料夾裡面
-小功能測試放在test資料夾裡面
-勿將模型push至github，模型檔案過大，請自行下載，並在.gitignore中忽略模型檔案
-不要串接api或雲端模型
+將不含個資測試資料放在presidio/fake資料夾裡面
+勿將模型push至github，並在.gitignore中忽略模型檔案
+請勿串接api或雲端模型
+
 
 代辦事項:
 
-更換或組合其它模型，應使recall盡量高，precision可以低一點
-加入以位置為單位遮蔽的功能，若欄位內有個資則整個欄位都遮蔽
-提升ocr準確性
-解決文字切割邊界問題
-增加使用者介面功能(另開檔案)
+handler_text，更換或組合其它模型，應使recall盡量高(可以犧牲precision)
+handler_csv，若欄位內有個資則整個欄位都遮蔽
+handler_media，嘗試其他ocr模型
 在手機上跑模型
-研究人臉遮蔽和馬賽克
+研究人臉遮蔽和機密圖像識別

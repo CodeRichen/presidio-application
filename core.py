@@ -1,9 +1,8 @@
 """
-core.py - main.py 與 ui.py 共用的核心
+core.py - main.py / ui.py / hotkey_service.py 共用的核心
 ====================================================
 放：設定、對照表、標籤遮蔽/還原、重疊處理、檔案分派 (code/text/media/field/csv)、
     剪貼簿讀寫工具、模型預熱。
-main.py 與 ui.py 都只 import 這支，彼此不互相 import。
 log 一律用 print；ui.py 會把 sys.stdout 接到畫面上的記錄區。
 """
 import os
@@ -249,14 +248,16 @@ def dispatch_files(paths, mapping) -> list:
             print(f"[完成] 已產生去識別化檔案：{out_path}")
 
         elif ext in TABLE_EXTENSIONS:
-            print(f"[分類] {path} -> 表格檔案，交給 handler_csv 處理")
+            print(f"[分類] {path} -> 表格檔案，交給 handler_csv 處理 (欄位內有個資則整欄遮蔽)")
 
-            def cell_fn(text):
-                with contextlib.redirect_stdout(io.StringIO()):  # 逐格偵測訊息太多，靜音
-                    return anonymize_text(text, mapping, is_code=False, save=False)
+            def detect_cell(text):
+                # 只用來判斷這格有沒有個資/什麼類型：用暫時的空對照表，不污染共用對照表；
+                # 逐格偵測訊息太多，順便靜音
+                with contextlib.redirect_stdout(io.StringIO()):
+                    return anonymize_text(text, {}, is_code=False, save=False)
 
             try:
-                out_path = handler_csv.mask_file(path, cell_fn, make_tagger(mapping))
+                out_path = handler_csv.mask_file(path, detect_cell, make_tagger(mapping))
             except Exception as e:
                 print(f"[錯誤] 表格處理失敗：{e}")
                 continue

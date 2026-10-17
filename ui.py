@@ -1,15 +1,16 @@
 """
 ui.py - 剪貼簿敏感資訊防護 圖形介面 (tkinter，不需額外安裝)
 ====================================================
-與 main.py 互相獨立，兩者都只呼叫 core.py。
+與 main.py 互相獨立，只 import core.py 與 hotkey_service.py。
 功能：
   - 文字：貼上/輸入文字 -> 遮蔽 / 還原 / 自動，可指定「程式碼 / 一般文字 / 自動判斷」
   - 檔案：選擇多個檔案 (code / text / media / csv / xlsx) -> 去識別化
-  - 剪貼簿：讀取剪貼簿 (文字或檔案)、把結果寫回剪貼簿
+  - 快速鍵：錄製並更改複製/貼上快速鍵、啟動/停止全域快速鍵 (設定存在 hotkeys.json，main.py 也會讀)
   - 檢視 / 清除對照表；關閉視窗時自動刪除對照表檔案
 啟動時在背景預熱模型；耗時工作在背景執行緒跑，介面不會卡住；所有 print 顯示在下方記錄區。
 """
 import os
+import re
 import sys
 import queue
 import threading
@@ -18,6 +19,44 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 import core
+import hotkey_service
+
+# ---------- 快速鍵錄製：Tk 按鍵事件 -> pynput 格式 ----------
+_MODIFIER_KEYSYMS = {"Control_L", "Control_R", "Alt_L", "Alt_R", "Shift_L", "Shift_R",
+                     "Win_L", "Win_R", "Super_L", "Super_R", "Meta_L", "Meta_R",
+                     "Caps_Lock", "Num_Lock", "Scroll_Lock"}
+_SPECIAL_KEYS = {"space": "<space>", "Return": "<enter>", "Tab": "<tab>", "BackSpace": "<backspace>",
+                 "Delete": "<delete>", "Insert": "<insert>", "Home": "<home>", "End": "<end>",
+                 "Prior": "<page_up>", "Next": "<page_down>",
+                 "Up": "<up>", "Down": "<down>", "Left": "<left>", "Right": "<right>"}
+
+
+def hotkey_from_event(event):
+    """回傳 (快速鍵字串, 錯誤訊息)。只按了修飾鍵時回傳 (None, None)，表示繼續等待。"""
+    ks = event.keysym
+    if ks in _MODIFIER_KEYSYMS:
+        return None, None
+
+    mods = []
+    if event.state & 0x4:
+        mods.append("<ctrl>")
+    if event.state & 0x20000:   # Windows 的 Alt
+        mods.append("<alt>")
+    if event.state & 0x1:
+        mods.append("<shift>")
+
+    if re.fullmatch(r"F\d{1,2}", ks):
+        key = f"<{ks.lower()}>"
+    elif ks in _SPECIAL_KEYS:
+        key = _SPECIAL_KEYS[ks]
+    elif len(ks) == 1:
+        key = ks.lower()
+    else:
+        return None, f"不支援的按鍵：{ks}"
+
+    if not mods and not key.startswith("<f"):
+        return None, "請至少搭配一個修飾鍵 (Ctrl / Alt / Shift)，避免影響一般打字"
+    return "+".join(mods + [key]), None
 
 
 class QueueWriter:
@@ -37,8 +76,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("剪貼簿敏感資訊防護")
-        self.geometry("980x780")
-        self.minsize(820, 640)
+        self.geometry("980x800")
+        self.minsize(820, 660)
 
         self.mapping = core.load_map()
         self.q = queue.Queue()
@@ -46,6 +85,9 @@ class App(tk.Tk):
         self._on_done = None
         self.files = []
         self.outputs = []
+        self._recording = None      # (StringVar, Entry) 正在錄製快速鍵的欄位
+        self._map_n = -1            # 用來偵測快速鍵背景處理造成的對照表變動
+        self.service = hotkey_service.HotkeyService(self.mapping)
 
         sys.stdout = QueueWriter(self.q)  # 之後所有 print 都進記錄區
 
@@ -124,6 +166,11 @@ class App(tk.Tk):
         ttk.Button(bar2, text="輸出檔案複製到剪貼簿", command=self.copy_outputs).pack(side="left")
         ttk.Button(bar2, text="開啟所在資料夾", command=self.open_output_folder).pack(side="left", padx=4)
 
+        # ===== 快速鍵分頁 =====
+        h = ttk.Frame(nb)
+        nb.add(h, text="快速鍵")
+        self._build_hotkey_tab(h)
+
         # ===== 對照表分頁 =====
         m = ttk.Frame(nb)
         nb.add(m, text="對照表")
@@ -150,6 +197,150 @@ class App(tk.Tk):
         self._busy_widgets = [self.btn_read, self.btn_auto, self.btn_mask,
                               self.btn_restore, self.btn_run_files]
 
+    def _build_hotkey_tab(self, parent):
+        cfg = hotkey_service.load_config()
+        self.hk_copy = tk.StringVar(value=cfg["copy"] or "")
+        self.hk_paste = tk.StringVar(value=cfg["paste"] or "")
+        self.hk_hint = tk.StringVar(value="")
+        self.hk_mode = tk.StringVar(value="")
+        self.svc_state = tk.StringVar(value="全域快速鍵：未啟動")
+
+        box = ttk.LabelFrame(parent, text="快速鍵設定 (按「錄製」後直接按下想用的組合鍵)")
+        box.pack(fill="x", padx=4, pady=8)
+        box.columnconfigure(1, weight=1)
+
+        ttk.Label(box, text="複製 / 遮蔽：").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+        self.ent_copy = ttk.Entry(box, textvariable=self.hk_copy, state="readonly", width=32)
+        self.ent_copy.grid(row=0, column=1, sticky="we", padx=4)
+        ttk.Button(box, text="錄製", command=lambda: self._record(self.hk_copy, self.ent_copy)
+                   ).grid(row=0, column=2, padx=4)
+
+        ttk.Label(box, text="貼上：").grid(row=1, column=0, sticky="w", padx=6, pady=6)
+        self.ent_paste = ttk.Entry(box, textvariable=self.hk_paste, state="readonly", width=32)
+        self.ent_paste.grid(row=1, column=1, sticky="we", padx=4)
+        ttk.Button(box, text="錄製", command=lambda: self._record(self.hk_paste, self.ent_paste)
+                   ).grid(row=1, column=2, padx=4)
+        ttk.Button(box, text="清除 (改用模式 B)", command=self._clear_paste).grid(row=1, column=3, padx=4)
+
+        ttk.Label(box, textvariable=self.hk_hint, foreground="#b45309").grid(
+            row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 4))
+        ttk.Label(box, textvariable=self.hk_mode, wraplength=840, justify="left").grid(
+            row=3, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 6))
+
+        for ent in (self.ent_copy, self.ent_paste):
+            ent.bind("<KeyPress>", self._on_hotkey_key)
+            ent.bind("<FocusOut>", self._stop_recording)
+        self.hk_paste.trace_add("write", lambda *_: self._update_mode_label())
+        self._update_mode_label()
+
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", padx=4, pady=4)
+        ttk.Button(bar, text="套用並儲存", command=self.apply_hotkeys).pack(side="left")
+        ttk.Button(bar, text="還原預設", command=self.reset_hotkeys).pack(side="left", padx=4)
+        self.btn_svc = ttk.Button(bar, text="啟動全域快速鍵", command=self.toggle_service)
+        self.btn_svc.pack(side="left", padx=(16, 4))
+        ttk.Label(bar, textvariable=self.svc_state).pack(side="left", padx=8)
+
+        tip = ("說明：\n"
+               "• 模式 A：貼上欄有值。複製只產生覆蓋結果，按貼上快速鍵才會貼出去，原生 Ctrl+C / Ctrl+V 不受影響。\n"
+               "• 模式 B：貼上欄清空，複製鍵通常設成 Ctrl+C。複製時直接覆寫剪貼簿，之後用原生 Ctrl+V 貼上；"
+               "處理完成前就貼上會貼出原始內容。\n"
+               "• 設定存在 hotkeys.json，命令列的 main.py 啟動時也會讀取同一份設定。\n"
+               "• 全域快速鍵由本視窗提供；關閉視窗後即停止。")
+        ttk.Label(parent, text=tip, wraplength=880, justify="left").pack(fill="x", padx=8, pady=8)
+
+    # ---------------- 快速鍵 ----------------
+    def _update_mode_label(self):
+        if self.hk_paste.get().strip():
+            self.hk_mode.set("目前模式：A (專屬快速鍵)。複製鍵產生覆蓋結果，貼上鍵才貼出，剪貼簿貼完會還原。")
+        else:
+            self.hk_mode.set("目前模式：B (Ctrl+C 直接模式)。複製時直接覆寫剪貼簿，之後按原生 Ctrl+V 貼上。"
+                             "若複製鍵設為 Ctrl+C，在終端機按 Ctrl+C 也會觸發。")
+
+    def _record(self, var, entry):
+        self._recording = (var, entry)
+        self.hk_hint.set("請按下要設定的組合鍵…  (Esc 取消)")
+        entry.focus_set()
+
+    def _stop_recording(self, _event=None):
+        if self._recording:
+            self._recording = None
+            self.hk_hint.set("")
+
+    def _clear_paste(self):
+        self.hk_paste.set("")
+        self._stop_recording()
+
+    def _on_hotkey_key(self, event):
+        if not self._recording or self._recording[1] is not event.widget:
+            return "break"
+        if event.keysym == "Escape":
+            self._stop_recording()
+            return "break"
+        hk, err = hotkey_from_event(event)
+        if err:
+            self.hk_hint.set(err)
+        elif hk:
+            self._recording[0].set(hk)
+            self._recording = None
+            self.hk_hint.set("")
+        return "break"
+
+    def _current_cfg(self):
+        return {"copy": self.hk_copy.get().strip() or None,
+                "paste": self.hk_paste.get().strip() or None}
+
+    def apply_hotkeys(self):
+        """驗證 -> 存檔 -> 若服務執行中就用新設定重新綁定。回傳是否成功。"""
+        cfg = self._current_cfg()
+        err = hotkey_service.validate_config(cfg)
+        if err:
+            messagebox.showerror("快速鍵設定不合法", err)
+            return False
+        try:
+            hotkey_service.save_config(cfg)
+        except OSError as e:
+            messagebox.showerror("儲存失敗", str(e))
+            return False
+        print(f"[設定] 已儲存快速鍵：複製={cfg['copy']}，貼上={cfg['paste'] or '(無，模式 B)'}")
+        if self.service.running:
+            try:
+                self.service.start(cfg)
+            except Exception as e:
+                messagebox.showerror("重新啟動快速鍵失敗", str(e))
+                self._refresh_service_state()
+                return False
+        else:
+            self.service.config = dict(cfg)
+        self._refresh_service_state()
+        return True
+
+    def reset_hotkeys(self):
+        self.hk_copy.set(hotkey_service.DEFAULT_CONFIG["copy"])
+        self.hk_paste.set(hotkey_service.DEFAULT_CONFIG["paste"])
+        self._stop_recording()
+
+    def toggle_service(self):
+        if self.service.running:
+            self.service.stop()
+        else:
+            if not self.apply_hotkeys():
+                return
+            try:
+                self.service.start(self._current_cfg())
+            except Exception as e:
+                messagebox.showerror("啟動快速鍵失敗", str(e))
+        self._refresh_service_state()
+
+    def _refresh_service_state(self):
+        if self.service.running:
+            mode = "B" if self.service.direct_mode else "A"
+            self.svc_state.set(f"全域快速鍵：執行中 (模式 {mode})")
+            self.btn_svc.configure(text="停止全域快速鍵")
+        else:
+            self.svc_state.set("全域快速鍵：未啟動")
+            self.btn_svc.configure(text="啟動全域快速鍵")
+
     # ---------------- 背景執行 ----------------
     def _set_busy(self, busy, msg=""):
         self.busy = busy
@@ -158,7 +349,8 @@ class App(tk.Tk):
         self.status.set(msg if busy else "就緒")
 
     def _start(self, func, msg, on_done):
-        """在背景執行 func，完成後在主執行緒呼叫 on_done(result)"""
+        """在背景執行 func，完成後在主執行緒呼叫 on_done(result)。
+        與快速鍵共用 WORK_LOCK，不會同時改對照表或搶剪貼簿。"""
         if self.busy:
             return
         self._on_done = on_done
@@ -166,7 +358,9 @@ class App(tk.Tk):
 
         def worker():
             try:
-                self.q.put(("done", func(), None))
+                with hotkey_service.WORK_LOCK:
+                    result = func()
+                self.q.put(("done", result, None))
             except Exception as e:
                 self.q.put(("done", None, e))
         threading.Thread(target=worker, daemon=True).start()
@@ -192,6 +386,8 @@ class App(tk.Tk):
                     self.refresh_map_view()
         except queue.Empty:
             pass
+        if len(self.mapping) != self._map_n:   # 快速鍵在背景新增了標籤
+            self.refresh_map_view()
         self.after(100, self._poll)
 
     # ---------------- 文字 ----------------
@@ -316,8 +512,9 @@ class App(tk.Tk):
     # ---------------- 對照表 ----------------
     def refresh_map_view(self):
         self.tree.delete(*self.tree.get_children())
-        for tag, val in self.mapping.items():
+        for tag, val in list(self.mapping.items()):
             self.tree.insert("", "end", values=(tag, val))
+        self._map_n = len(self.mapping)
 
     def clear_map(self):
         if messagebox.askyesno("清除對照表", "清除後，已遮蔽的內容將無法還原。確定嗎？"):
@@ -327,6 +524,7 @@ class App(tk.Tk):
 
     # ---------------- 結束 ----------------
     def _on_close(self):
+        self.service.stop()
         sys.stdout = sys.__stdout__
         core.cleanup_map_files()
         self.destroy()
