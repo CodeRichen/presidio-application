@@ -5,8 +5,10 @@ ui.py - 剪貼簿敏感資訊防護 圖形介面 (tkinter，不需額外安裝)
 功能：
   - 文字：貼上/輸入文字 -> 遮蔽 / 還原 / 自動，可指定「程式碼 / 一般文字 / 自動判斷」
   - 檔案：選擇多個檔案 (code / text / media / csv / xlsx) -> 去識別化
+  - 資料夾掃描：選一個資料夾，自動遮蔽裡面的圖片/PDF/文字/程式碼/表格，列出哪些檔案危險
   - 快速鍵：錄製並更改複製/貼上快速鍵、啟動/停止全域快速鍵 (設定存在 hotkeys.json，main.py 也會讀)
-  - 檢視 / 清除對照表；關閉視窗時自動刪除對照表檔案
+  - 敏感清單：檢視每次偵測到的敏感值 (存在 presidio/real/，不會被自動刪除)，可手動移除誤判
+  - 檢視 / 清除對照表；關閉視窗時自動刪除對照表檔案 (敏感清單保留)
 啟動時在背景預熱模型；耗時工作在背景執行緒跑，介面不會卡住；所有 print 顯示在下方記錄區。
 """
 import os
@@ -76,8 +78,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("剪貼簿敏感資訊防護")
-        self.geometry("980x800")
-        self.minsize(820, 660)
+        self.geometry("1040x860")
+        self.minsize(860, 700)
 
         self.mapping = core.load_map()
         self.q = queue.Queue()
@@ -85,6 +87,7 @@ class App(tk.Tk):
         self._on_done = None
         self.files = []
         self.outputs = []
+        self.scan_results = []
         self._recording = None      # (StringVar, Entry) 正在錄製快速鍵的欄位
         self._map_n = -1            # 用來偵測快速鍵背景處理造成的對照表變動
         self.service = hotkey_service.HotkeyService(self.mapping)
@@ -94,12 +97,12 @@ class App(tk.Tk):
         self._build()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(100, self._poll)
-        print(f"[就緒] 已載入對照表 {len(self.mapping)} 筆")
+        print(f"[就緒] 已載入對照表 {len(self.mapping)} 筆、敏感清單 {core.sensitive_count()} 筆")
         self._start(core.warmup, "載入模型中…", None)  # 背景預熱
 
     # ---------------- 介面 ----------------
     def _build(self):
-        nb = ttk.Notebook(self)
+        self.nb = nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=8, pady=(8, 4))
 
         # ===== 文字分頁 =====
@@ -166,10 +169,20 @@ class App(tk.Tk):
         ttk.Button(bar2, text="輸出檔案複製到剪貼簿", command=self.copy_outputs).pack(side="left")
         ttk.Button(bar2, text="開啟所在資料夾", command=self.open_output_folder).pack(side="left", padx=4)
 
+        # ===== 資料夾掃描分頁 =====
+        s = ttk.Frame(nb)
+        nb.add(s, text="資料夾掃描")
+        self._build_scan_tab(s)
+
         # ===== 快速鍵分頁 =====
         h = ttk.Frame(nb)
         nb.add(h, text="快速鍵")
         self._build_hotkey_tab(h)
+
+        # ===== 敏感清單分頁 =====
+        k = ttk.Frame(nb)
+        nb.add(k, text="敏感清單")
+        self._build_known_tab(k)
 
         # ===== 對照表分頁 =====
         m = ttk.Frame(nb)
@@ -186,17 +199,162 @@ class App(tk.Tk):
         self.tree.pack(fill="both", expand=True)
         self.refresh_map_view()
 
+        nb.bind("<<NotebookTabChanged>>", lambda _e: self.refresh_known_view())
+
         # ===== 記錄區 =====
         lg = ttk.LabelFrame(self, text="記錄")
         lg.pack(fill="both", expand=False, padx=8, pady=(0, 8))
-        self.log = scrolledtext.ScrolledText(lg, height=11, wrap="none", state="disabled")
+        self.log = scrolledtext.ScrolledText(lg, height=10, wrap="none", state="disabled")
         self.log.pack(fill="both", expand=True)
         self.status = tk.StringVar(value="就緒")
         ttk.Label(self, textvariable=self.status, anchor="w").pack(fill="x", padx=8, pady=(0, 4))
 
         self._busy_widgets = [self.btn_read, self.btn_auto, self.btn_mask,
-                              self.btn_restore, self.btn_run_files]
+                              self.btn_restore, self.btn_run_files, self.btn_scan]
 
+    # ---------------- 資料夾掃描 ----------------
+    def _build_scan_tab(self, parent):
+        self.scan_dir = tk.StringVar(value="")
+        self.scan_recursive = tk.BooleanVar(value=True)
+        self.scan_summary = tk.StringVar(value="尚未掃描")
+
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", pady=6)
+        ttk.Label(bar, text="資料夾：").pack(side="left")
+        ttk.Entry(bar, textvariable=self.scan_dir).pack(side="left", fill="x", expand=True, padx=4)
+        ttk.Button(bar, text="瀏覽…", command=self.pick_scan_dir).pack(side="left")
+        ttk.Checkbutton(bar, text="包含子資料夾", variable=self.scan_recursive).pack(side="left", padx=8)
+        self.btn_scan = ttk.Button(bar, text="開始掃描並遮蔽", command=self.run_scan)
+        self.btn_scan.pack(side="left")
+
+        ttk.Label(parent, textvariable=self.scan_summary, font=("", 10, "bold")).pack(anchor="w", pady=(2, 4))
+
+        cols = ("risk", "file", "kind", "hits", "labels", "output")
+        self.scan_tree = ttk.Treeview(parent, columns=cols, show="headings", selectmode="extended")
+        for c, text, w in (("risk", "風險", 60), ("file", "檔案", 340), ("kind", "類型", 70),
+                           ("hits", "筆數", 50), ("labels", "偵測到的類型", 220), ("output", "去識別化輸出", 280)):
+            self.scan_tree.heading(c, text=text)
+            self.scan_tree.column(c, width=w, anchor="w")
+        self.scan_tree.tag_configure("高", foreground="#b91c1c")
+        self.scan_tree.tag_configure("中", foreground="#b45309")
+        self.scan_tree.tag_configure("錯誤", foreground="#6b7280")
+        self.scan_tree.pack(fill="both", expand=True)
+
+        bar2 = ttk.Frame(parent)
+        bar2.pack(fill="x", pady=4)
+        ttk.Button(bar2, text="開啟所在資料夾", command=self.open_scan_folder).pack(side="left")
+        ttk.Button(bar2, text="輸出檔案複製到剪貼簿", command=self.copy_scan_outputs).pack(side="left", padx=4)
+        ttk.Label(bar2, text="(只有偵測到敏感資訊的檔案才會列為危險並產生 *_masked 檔；選取列則只處理選取的)"
+                  ).pack(side="left", padx=8)
+
+    def pick_scan_dir(self):
+        d = filedialog.askdirectory(title="選擇要掃描的資料夾")
+        if d:
+            self.scan_dir.set(os.path.normpath(d))
+
+    def run_scan(self):
+        folder = self.scan_dir.get().strip()
+        if not folder or not os.path.isdir(folder):
+            messagebox.showinfo("提示", "請先選擇有效的資料夾")
+            return
+        recursive = self.scan_recursive.get()
+
+        def progress(i, total, path):
+            self.q.put(("status", f"掃描中 {i}/{total}：{os.path.basename(path)}"))
+
+        def job():
+            print("\n" + "=" * 50)
+            return core.scan_folder(folder, self.mapping, recursive=recursive, progress=progress)
+
+        def done(results):
+            self.scan_results = results
+            self.scan_tree.delete(*self.scan_tree.get_children())
+            for i, r in enumerate(results):
+                rel = os.path.relpath(r["path"], folder)
+                labels = ", ".join(f"{k}×{v}" for k, v in r["labels"].items()) or (r["error"] or "")
+                self.scan_tree.insert("", "end", iid=str(i), tags=(r["risk"],), values=(
+                    r["risk"] if r["risk"] != "無" else "安全", rel, r["kind"],
+                    r["hits"] or "", labels, r["output"] or ""))
+            danger = [r for r in results if r["output"]]
+            high = sum(1 for r in danger if r["risk"] == "高")
+            self.scan_summary.set(f"共 {len(results)} 個檔案：危險 {len(danger)} 個 (高風險 {high})，"
+                                  f"安全 {len(results) - len(danger)} 個")
+            print("\n" + core.format_scan_report(results))
+            self.refresh_known_view()
+            if danger:
+                lines = [f"[{r['risk']}] {os.path.relpath(r['path'], folder)}" for r in danger[:15]]
+                more = f"\n… 另外 {len(danger) - 15} 個，請看清單" if len(danger) > 15 else ""
+                messagebox.showwarning("發現含敏感資訊的檔案",
+                                       f"共 {len(danger)} 個檔案含敏感資訊 (已產生 *_masked 去識別化檔)：\n\n"
+                                       + "\n".join(lines) + more)
+            else:
+                messagebox.showinfo("掃描完成", "沒有發現含敏感資訊的檔案")
+
+        self._start(job, "掃描資料夾中…", done)
+
+    def _selected_scan_results(self):
+        sel = self.scan_tree.selection()
+        rows = [self.scan_results[int(i)] for i in sel] if sel else self.scan_results
+        return [r for r in rows if r["output"]]
+
+    def open_scan_folder(self):
+        sel = self.scan_tree.selection()
+        if sel:
+            path = self.scan_results[int(sel[0])]["path"]
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+
+    def copy_scan_outputs(self):
+        paths = [r["output"] for r in self._selected_scan_results()]
+        if not paths:
+            messagebox.showinfo("提示", "沒有可複製的輸出檔案")
+            return
+        core.copy_files_to_clipboard(paths)
+        print(f"[完成] 已把 {len(paths)} 個去識別化檔案複製到剪貼簿")
+
+    # ---------------- 敏感清單 ----------------
+    def _build_known_tab(self, parent):
+        self.known_info = tk.StringVar(value="")
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", pady=4)
+        ttk.Button(bar, text="重新整理", command=self.refresh_known_view).pack(side="left")
+        ttk.Button(bar, text="移除選取 (誤判的詞)", command=self.remove_known).pack(side="left", padx=4)
+        ttk.Label(bar, textvariable=self.known_info).pack(side="left", padx=8)
+
+        cols = ("value", "label", "count", "last", "sources")
+        self.known_tree = ttk.Treeview(parent, columns=cols, show="headings", selectmode="extended")
+        for c, text, w in (("value", "敏感值 (明碼)", 320), ("label", "類型", 140), ("count", "次數", 50),
+                           ("last", "最近出現", 140), ("sources", "來源", 280)):
+            self.known_tree.heading(c, text=text)
+            self.known_tree.column(c, width=w, anchor="w")
+        self.known_tree.pack(fill="both", expand=True)
+
+        ttk.Label(parent, justify="left", wraplength=940, text=(
+            f"說明：每次遮蔽偵測到的敏感值都會記錄到 {core.SENSITIVE_FILE}，程式結束時不會刪除。\n"
+            "之後文字 / 程式碼 / 表格出現清單裡的值，會被當成正則規則自動遮蔽。"
+            "若某個詞被誤判成敏感資訊，在這裡移除即可。檔案內是明碼，請注意存放權限。")
+        ).pack(fill="x", padx=4, pady=6)
+
+    def refresh_known_view(self):
+        if not hasattr(self, "known_tree"):
+            return
+        items = core.load_sensitive_items()
+        self.known_tree.delete(*self.known_tree.get_children())
+        for r in items:
+            self.known_tree.insert("", "end", iid=r["value"], values=(
+                r["value"], r.get("label", ""), r.get("count", 1), r.get("last_seen", ""),
+                ", ".join(r.get("sources", []))))
+        self.known_info.set(f"共 {len(items)} 筆" + ("" if core.USE_KNOWN_ITEMS else "  (自動遮蔽已關閉：core.USE_KNOWN_ITEMS = False)"))
+
+    def remove_known(self):
+        sel = list(self.known_tree.selection())
+        if not sel:
+            return
+        if messagebox.askyesno("移除", f"從敏感清單移除 {len(sel)} 筆？之後這些值不會再被自動遮蔽。"):
+            n = core.remove_sensitive_items(sel)
+            print(f"[敏感清單] 已移除 {n} 筆")
+            self.refresh_known_view()
+
+    # ---------------- 快速鍵 ----------------
     def _build_hotkey_tab(self, parent):
         cfg = hotkey_service.load_config()
         self.hk_copy = tk.StringVar(value=cfg["copy"] or "")
@@ -224,7 +382,7 @@ class App(tk.Tk):
 
         ttk.Label(box, textvariable=self.hk_hint, foreground="#b45309").grid(
             row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 4))
-        ttk.Label(box, textvariable=self.hk_mode, wraplength=840, justify="left").grid(
+        ttk.Label(box, textvariable=self.hk_mode, wraplength=900, justify="left").grid(
             row=3, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 6))
 
         for ent in (self.ent_copy, self.ent_paste):
@@ -247,9 +405,8 @@ class App(tk.Tk):
                "處理完成前就貼上會貼出原始內容。\n"
                "• 設定存在 hotkeys.json，命令列的 main.py 啟動時也會讀取同一份設定。\n"
                "• 全域快速鍵由本視窗提供；關閉視窗後即停止。")
-        ttk.Label(parent, text=tip, wraplength=880, justify="left").pack(fill="x", padx=8, pady=8)
+        ttk.Label(parent, text=tip, wraplength=940, justify="left").pack(fill="x", padx=8, pady=8)
 
-    # ---------------- 快速鍵 ----------------
     def _update_mode_label(self):
         if self.hk_paste.get().strip():
             self.hk_mode.set("目前模式：A (專屬快速鍵)。複製鍵產生覆蓋結果，貼上鍵才貼出，剪貼簿貼完會還原。")
@@ -374,6 +531,9 @@ class App(tk.Tk):
                     self.log.insert("end", item[1])
                     self.log.see("end")
                     self.log.configure(state="disabled")
+                elif item[0] == "status":
+                    if self.busy:
+                        self.status.set(item[1])
                 elif item[0] == "done":
                     _, result, err = item
                     self._set_busy(False)
@@ -487,6 +647,7 @@ class App(tk.Tk):
             self.lst_out.delete(0, "end")
             for p in self.outputs:
                 self.lst_out.insert("end", p)
+            self.refresh_known_view()
             if not outs:
                 messagebox.showinfo("結果", "沒有產生任何檔案 (未偵測到內容或副檔名不支援)")
 
@@ -526,7 +687,7 @@ class App(tk.Tk):
     def _on_close(self):
         self.service.stop()
         sys.stdout = sys.__stdout__
-        core.cleanup_map_files()
+        core.cleanup_map_files()   # 只刪對照表；敏感清單刻意保留
         self.destroy()
 
 

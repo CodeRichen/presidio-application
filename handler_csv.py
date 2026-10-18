@@ -41,6 +41,9 @@ HEADER_RULES = [
 
 _TAG_TYPE_RE = re.compile(r"<([A-Z_]+)_\d+>")
 
+# 最近一次 mask_file 整欄遮蔽的欄位清單 [(欄名, 標籤類型, 原因)]，給 core 的資料夾掃描報告用
+LAST_REPORT = []
+
 
 def _header_type(header):
     h = str(header or "").strip()
@@ -124,6 +127,7 @@ class _CellMasker:
 
 
 def _print_report(label, nrows, ncols, report):
+    LAST_REPORT.extend(report)
     flagged = [f"{name!r}->{etype} ({why})" for name, etype, why in report]
     print(f"[表格] {label}：{nrows} 列 x {ncols} 欄，整欄遮蔽的欄位：{flagged or '無'}")
 
@@ -192,6 +196,7 @@ def _mask_xlsx(path, ext, detect_cell, masker):
 def mask_file(path, detect_cell, tag_value):
     """回傳產生的檔案路徑；沒有任何欄位被遮蔽則回傳 None (並刪除空轉產生的檔案)。"""
     ext = os.path.splitext(path)[1].lower()
+    LAST_REPORT.clear()
     masker = _CellMasker(tag_value)
     if ext in (".xlsx", ".xlsm"):
         out_path = _mask_xlsx(path, ext, detect_cell, masker)

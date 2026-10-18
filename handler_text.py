@@ -2,6 +2,7 @@
 一般文字（非程式碼）敏感資訊偵測規則。
 只負責「偵測」，回傳 [(start, end, label, score, source), ...]；標籤替換/存檔統一交給 main.py 處理。
 想加規則：在 RULES 加一行 Rule(...) 即可，不用動 detect()。
+固定要遮的人名/機構名等：寫進 known_entities.txt (每行 LABEL<Tab>值)，detect() 會當成 "regex" 規則一起跑。
 
 第 5 個欄位 source 是這筆結果的「來源」，固定是下面三種之一：
     "regex" -> 正則規則命中 (score 固定 None)
@@ -17,6 +18,7 @@ main.py / handler_media.py 在合併重疊結果時，就是靠這個欄位決�
 把 NLP_MODELS["zh"] 或 NLP_MODELS["en"] 蓋掉即可，presidio_matches()/detect() 都不用動；
 只要記得自己的 source 欄位固定回傳 "en" 或 "zh"（對應蓋掉的是哪一層），重疊優先序才不會判斷錯。
 """
+import os
 import re
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Tuple
@@ -291,8 +293,89 @@ def presidio_matches(text: str) -> List[Tuple[int, int, str, Optional[float], st
 
     return en_matches
 
+# ---------- 已知實體清單 (known_entities.txt)：手動維護，格式 LABEL<Tab>值 ----------
+# 手動維護的清單；跟 clipboard_map.txt (遮蔽對照表) 與 sensitive_items.json (自動記錄清單) 都是不同的檔案
+KNOWN_ENTITIES_FILE = "./presidio/real/known_entities.txt"
+_LABEL_OK = re.compile(r"[A-Z_]+")
+
+
+def load_known_entities(path=None):
+    """讀 known_entities.txt -> {"PERSON": {"邢立承", ...}, ...}。檔案不存在就回傳空 dict。"""
+    path = path or KNOWN_ENTITIES_FILE
+    known = {}
+    try:
+        with open(path, encoding="utf-8-sig") as f:      # utf-8-sig：記事本存檔的 BOM 也能讀
+            for n, line in enumerate(f, 1):
+                line = line.rstrip("\r\n")
+                if not line.strip() or line.lstrip().startswith("#"):
+                    continue
+                label, sep, value = line.partition("\t")
+                label, value = label.strip().upper(), value.strip()
+                if not sep or not value or not _LABEL_OK.fullmatch(label):
+                    print(f"[警告] {path} 第 {n} 行格式不符 (需為 LABEL<Tab>值)，已略過")
+                    continue
+                known.setdefault(label, set()).add(value)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        print(f"[警告] 讀取 {path} 失敗：{e}")
+    return known
+
+
+def _alt(value):
+    """re.escape 之外，英數開頭/結尾的值加邊界判斷，避免 Tom 命中 Tomorrow 的一部分 (中文不受影響)"""
+    p = re.escape(value)
+    if re.match(r"[A-Za-z0-9]", value[0]):
+        p = r"(?<![A-Za-z0-9])" + p
+    if re.match(r"[A-Za-z0-9]", value[-1]):
+        p += r"(?![A-Za-z0-9])"
+    return p
+
+
+def build_known_patterns(known):
+    """每個 label 編一個 alternation pattern 並一次編譯；值依長度由長到短排序，避免短字串搶先蓋掉長字串"""
+    return {
+        label: re.compile("|".join(_alt(v) for v in sorted(vals, key=len, reverse=True)))
+        for label, vals in known.items() if vals
+    }
+
+
+def _known_mtime():
+    try:
+        return os.path.getmtime(KNOWN_ENTITIES_FILE)
+    except OSError:
+        return None
+
+
+KNOWN = load_known_entities()                  # {"PERSON": {"邢立承", ...}, ...}
+KNOWN_PATTERNS = build_known_patterns(KNOWN)
+_known_loaded_mtime = _known_mtime()
+if KNOWN:
+    print(f"[已知實體] 已載入 {sum(len(v) for v in KNOWN.values())} 筆 ({', '.join(KNOWN)})")
+
+
+def reload_known_entities():
+    """重新讀檔並重編 pattern (長時間執行的快速鍵服務改了清單後不用重開程式)"""
+    global KNOWN, KNOWN_PATTERNS, _known_loaded_mtime
+    KNOWN = load_known_entities()
+    KNOWN_PATTERNS = build_known_patterns(KNOWN)
+    _known_loaded_mtime = _known_mtime()
+    print(f"[已知實體] 重新載入，共 {sum(len(v) for v in KNOWN.values())} 筆")
+
+
+def detect_known_entities(text):
+    """回傳 [(start, end, label, None, "regex")]：source 用 "regex"，跟既有正則規則同一個來源標籤 (優先序最高)"""
+    if _known_mtime() != _known_loaded_mtime:    # 檔案被改過就自動重載 (一次 os.stat，成本可忽略)
+        reload_known_entities()
+    matches = []
+    for label, pattern in KNOWN_PATTERNS.items():
+        for m in pattern.finditer(text):
+            matches.append((m.start(), m.end(), label, None, "regex"))
+    return matches
+
+
 def detect(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
     """main.py 呼叫的入口：回傳這段文字裡所有敏感資訊的 (start, end, label, score, source)，
     score 是模型判定的信心分數 (0~1)，正則規則比對到的固定是 None；
     source 是 "regex"/"en"/"zh" 三選一，供重疊時判斷優先序用。"""
-    return _run_rules(text) + presidio_matches(text)
+    return _run_rules(text) + detect_known_entities(text) + presidio_matches(text)
