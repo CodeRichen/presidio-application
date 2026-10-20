@@ -5,20 +5,24 @@ core.py - main.py / ui.py / hotkey_service.py 共用的核心
     資料夾掃描、剪貼簿讀寫工具、模型預熱。
 log 一律用 print；ui.py 會把 sys.stdout 接到畫面上的記錄區。
 
-敏感清單 (sensitive_items.json)：
-    每次遮蔽時偵測到的敏感值 (值、類型、次數、來源檔案) 都會記錄到 ./presidio/real/，
-    程式結束時【不會】刪除 (對照表 clipboard_map.txt 才會在結束時刪除)。
-    之後只要文字 / 程式碼 / 表格儲存格出現清單裡的值，會當成「正則規則」(source="regex",
-    優先序最高) 自動遮蔽。USE_KNOWN_ITEMS = False 可關閉自動遮蔽。
+名單 (敏感清單 / 黑名單 / 安全清單) 的存取與管理在 entity_store.py，main.py 與 ui.py 都直接用它；
+這裡只負責在偵測時套用：
+    敏感清單 -> 當成「正則規則」(source="regex"，優先序最高) 自動遮蔽 (USE_KNOWN_ITEMS = False 可關閉)
+    安全清單 -> 偵測結果若剛好等於清單裡的值就略過，不遮蔽
+    黑名單   -> 遮蔽時不會再把這些值自動記進敏感清單
+這些名單在 ./presidio/real/，程式結束時【不會】刪除 (對照表 clipboard_map.txt 才會在結束時刪除)。
+
+前處理 (preprocess.py)：文字 / 程式碼 / 表格儲存格 / 圖片與 PDF 的 OCR 文字送模型前，統一先做
+    全形轉半形 -> 隱形字元 -> 網頁標籤 -> 簡繁統一 -> 換行與空白。偵測用前處理後的文字，
+    結果再換算回【原文座標】，所以遮蔽只會動被偵測到的那一段，其餘原樣保留。
 """
 import os
 import io
 import re
 import sys
-import json
 import time
+import shutil
 import struct
-import threading
 import contextlib
 from collections import Counter
 
@@ -32,6 +36,8 @@ import handler_text
 import handler_code
 import handler_media
 import handler_csv
+import entity_store
+import preprocess
 
 try:
     import handler_field  # 選用：提供 detect(text) -> [(start, end, label, score, source)]
@@ -46,13 +52,14 @@ TEXT_FILE_EXTENSIONS = {".txt", ".md", ".log"}
 TABLE_EXTENSIONS = handler_csv.TABLE_EXTENSIONS
 
 MAP_FILE = "./presidio/real/clipboard_map.txt"            # 結束時刪除
-SENSITIVE_FILE = "./presidio/real/sensitive_items.json"   # 敏感清單：不會被自動刪除
+SENSITIVE_FILE = entity_store.SENSITIVE_FILE   # 敏感清單 (名單都不會被自動刪除，見 entity_store.py)
 
 USE_KNOWN_ITEMS = True    # 偵測時是否讀取敏感清單並自動遮蔽
-KNOWN_MIN_LEN = 3         # 太短的值 (例如 2 個字) 不記錄、不自動遮蔽，避免誤傷一般文字
 
-# 資料夾掃描
-SCAN_SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv"}
+# 資料夾掃描：先把整個資料夾複製到「同層」的新資料夾 (原名 + SCAN_OUTPUT_SUFFIX)，
+# 再只對複製出來的檔案做遮蔽，檔名不變、原資料夾完全不動
+SCAN_OUTPUT_SUFFIX = "_masked"
+SCAN_SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv"}   # 這些資料夾會複製，但不掃描
 # 偵測類型名稱含這些關鍵字就視為「高風險」(憑證/金融/證號)，其餘有命中的算「中風險」
 HIGH_RISK_KEYWORDS = ("KEY", "JWT", "PASSWORD", "PASSWD", "SECRET", "TOKEN",
                       "CARD", "NATIONAL_ID", "SSN", "PRIVATE")
@@ -124,145 +131,20 @@ def cleanup_map_files():
             print(f"[警告] 刪除 {f} 失敗：{e}")
 
 
-# ---------- 敏感清單 ----------
-_items_lock = threading.RLock()
-_items = {"mtime": None, "data": {}, "regex": None}   # data: 值 -> 記錄
-
-
-def _clean_label(label):
-    label = re.sub(r"[^A-Z_]", "_", str(label or "SENSITIVE").upper()).strip("_")
-    return label or "SENSITIVE"
-
-
-def _file_mtime():
-    try:
-        return os.path.getmtime(SENSITIVE_FILE)
-    except OSError:
-        return None
-
-
-def _sync_items():
-    """檔案有變動 (例如另一個程式寫入) 就重新載入。呼叫端需持有 _items_lock。"""
-    mt = _file_mtime()
-    if mt == _items["mtime"]:
-        return
-    data = {}
-    if mt is not None:
-        try:
-            with open(SENSITIVE_FILE, encoding="utf-8") as f:
-                for rec in json.load(f):
-                    if rec.get("value"):
-                        data[rec["value"]] = rec
-        except Exception as e:
-            print(f"[警告] 讀取敏感清單失敗：{e}")
-    _items.update(mtime=mt, data=data, regex=None)
-
-
-def _save_items():
-    """呼叫端需持有 _items_lock。先寫暫存檔再取代，避免寫到一半被讀到。"""
-    folder = os.path.dirname(SENSITIVE_FILE)
-    if folder:
-        os.makedirs(folder, exist_ok=True)
-    tmp = SENSITIVE_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(list(_items["data"].values()), f, ensure_ascii=False, indent=2)
-    os.replace(tmp, SENSITIVE_FILE)
-    _items["mtime"] = _file_mtime()
-    _items["regex"] = None
-
-
-def record_sensitive(entries, source=""):
-    """entries: [(值, 類型), ...]。新值會加入清單，已存在的累計次數。回傳新增筆數。"""
-    entries = list(entries)
-    if not entries:
-        return 0
-    now = time.strftime("%Y-%m-%d %H:%M:%S")
-    added = 0
-    with _items_lock:
-        _sync_items()
-        data = _items["data"]
-        touched = False
-        for value, label in entries:
-            value = (value or "").strip()
-            if len(value) < KNOWN_MIN_LEN:
-                continue
-            touched = True
-            rec = data.get(value)
-            if rec is None:
-                data[value] = {"value": value, "label": _clean_label(label), "count": 1,
-                               "first_seen": now, "last_seen": now,
-                               "sources": [source] if source else []}
-                added += 1
-            else:
-                rec["count"] = rec.get("count", 0) + 1
-                rec["last_seen"] = now
-                if source and source not in rec.setdefault("sources", []):
-                    rec["sources"] = (rec["sources"] + [source])[-5:]
-        if touched:
-            try:
-                _save_items()
-            except OSError as e:
-                print(f"[警告] 儲存敏感清單失敗：{e}")
-    if added:
-        print(f"[敏感清單] 新增 {added} 筆 -> {SENSITIVE_FILE}")
-    return added
-
-
-def load_sensitive_items():
-    """回傳清單記錄 (最近出現的在前)，給 UI 顯示"""
-    with _items_lock:
-        _sync_items()
-        return sorted((dict(r) for r in _items["data"].values()),
-                      key=lambda r: r.get("last_seen", ""), reverse=True)
-
-
-def sensitive_count():
-    with _items_lock:
-        _sync_items()
-        return len(_items["data"])
+# ---------- 名單 (實作在 entity_store.py) ----------
+record_sensitive = entity_store.record_sensitive
+load_sensitive_items = entity_store.load_items
+sensitive_count = entity_store.items_count
 
 
 def remove_sensitive_items(values):
-    """使用者手動從清單移除 (例如誤判的詞)。回傳移除筆數。"""
-    with _items_lock:
-        _sync_items()
-        n = 0
-        for v in values:
-            if _items["data"].pop(v, None) is not None:
-                n += 1
-        if n:
-            _save_items()
-        return n
-
-
-def _known_regex():
-    """把清單裡所有值編成一個正則 (長的優先)。呼叫端需持有 _items_lock。"""
-    if _items["regex"] is None:
-        parts = []
-        for v in sorted(_items["data"], key=len, reverse=True):
-            p = re.escape(v)
-            if re.match(r"[A-Za-z0-9]", v[0]):
-                p = r"(?<![A-Za-z0-9])" + p      # 英數開頭：前面不能緊接英數，避免命中字的一部分
-            if re.match(r"[A-Za-z0-9]", v[-1]):
-                p += r"(?![A-Za-z0-9])"
-            parts.append(p)
-        _items["regex"] = re.compile("|".join(parts)) if parts else False
-    return _items["regex"] or None
+    """相容舊名稱：刪除 = 從敏感清單移除並加入黑名單"""
+    return entity_store.block_items(values)
 
 
 def detect_known(text):
-    """把敏感清單當成一條正則規則：回傳 [(start, end, label, None, "regex")]"""
-    if not USE_KNOWN_ITEMS:
-        return []
-    with _items_lock:
-        _sync_items()
-        rx = _known_regex()
-        if not rx:
-            return []
-        data = _items["data"]
-        return [(m.start(), m.end(), data[m.group(0)]["label"] if m.group(0) in data else "SENSITIVE",
-                 None, "regex")
-                for m in rx.finditer(text)]
+    """把敏感清單當成一條正則規則：[(start, end, label, None, "regex")]"""
+    return entity_store.detect_known(text) if USE_KNOWN_ITEMS else []
 
 
 # ---------- 重疊處理 ----------
@@ -299,26 +181,56 @@ def merge_overlaps(matches, prefer_zh: bool):
 
 
 # ---------- 遮蔽 / 還原 ----------
-def _anonymize_full(text, mapping, is_code, save, record, source):
-    """回傳 (遮蔽後文字或 None, 保留下來的偵測結果)"""
-    if is_code is None:
-        is_code = is_code_text(text)
+def _detect_models(text, is_code):
+    """規則 + 模型 (handler_text / handler_code / handler_field)；座標是傳進來的 text 的位置"""
     matches = list(handler_code.detect(text) if is_code else handler_text.detect(text))
     if handler_field is not None:
         matches += list(handler_field.detect(text))
-    if is_code:   # 程式碼路徑不一定經過 handler_text.detect()，這裡補上手動維護的已知實體清單
-        fn = getattr(handler_text, "detect_known_entities", None)
-        if fn:
-            matches += fn(text)
+    return matches
+
+
+def detect_entities(text, is_code=None):
+    """前處理 -> 規則與模型 -> 座標換算回原文 -> 手動清單 -> 安全清單 -> 重疊處理。
+    回傳 (is_code, 保留下來的偵測結果 [(start, end, label, score, source)])，座標一律是【原文】的位置。"""
+    if is_code is None:
+        is_code = is_code_text(text)
+
+    # 1. 前處理後的文字送模型 (程式碼不做網頁標籤刪除)，結果換算回原文
+    norm = preprocess.preprocess(text, html=not is_code)
+    matches = norm.map_matches(_detect_models(norm.text, is_code))
+    if matches is None:                       # 偵測結果的格式認不得 -> 退回用原文偵測，不給錯誤座標
+        matches = _detect_models(text, is_code)
+
+    # 2. 手動清單的值是「原文裡的寫法」，直接比對原文 (known_entities.txt、敏感清單)
+    fn = getattr(handler_text, "detect_known_entities", None)
+    if fn:
+        matches += fn(text)
     known = detect_known(text)
     matches += known
+    matches = list(dict.fromkeys(tuple(m) for m in matches))      # 完全相同的候選只留一筆
+
+    # 3. 安全清單：偵測到的值剛好等於清單裡的值就略過
+    safe = entity_store.safe_values()
+    if safe and matches:
+        kept = [m for m in matches if text[m[0]:m[1]].strip() not in safe]
+        if len(kept) != len(matches):
+            print(f"[安全清單] 略過 {len(matches) - len(kept)} 筆已標為安全的值")
+        matches = kept
     if not matches:
-        return None, []
+        return is_code, []
 
     prefer_zh = handler_text.contains_chinese(text)
     known_info = f"，其中敏感清單命中 {len(known)} 筆" if known else ""
-    print(f"[偵測] 共 {len(matches)} 筆候選 (含正則規則與模型{known_info})：")
-    matches = merge_overlaps(matches, prefer_zh)
+    pre_info = f"；前處理 {len(text)} -> {len(norm.text)} 字元，座標已換算回原文" if not norm.identity else ""
+    print(f"[偵測] 共 {len(matches)} 筆候選 (含正則規則與模型{known_info}{pre_info})：")
+    return is_code, merge_overlaps(matches, prefer_zh)
+
+
+def _anonymize_full(text, mapping, is_code, save, record, source):
+    """回傳 (遮蔽後文字或 None, 保留下來的偵測結果)"""
+    is_code, matches = detect_entities(text, is_code)
+    if not matches:
+        return None, []
 
     reverse = {v: k for k, v in mapping.items()}
     counters = {}
@@ -425,16 +337,26 @@ def make_tagger(mapping, source=""):
 
 
 # ---------- 圖片 / PDF ----------
-def _mask_media(path):
-    """呼叫 handler_media 遮蔽圖片/PDF，並把偵測到的值記錄進敏感清單。
-    回傳 (輸出檔路徑或 None, entries)。沒偵測到任何內容時，不留下輸出檔。"""
+def _mask_media(path, out=None):
+    """呼叫 handler_media 遮蔽圖片/PDF，並把偵測到的值記錄進敏感清單。回傳 (輸出檔路徑或 None, entries)。
+    out=None：輸出成 <原檔名>_masked<副檔名>，沒偵測到任何內容時不留下輸出檔 (快速鍵 / 檔案分頁用)。
+    指定 out：直接寫到那個路徑 (資料夾掃描用，檔名與原檔相同)；沒偵測到時把原檔複製過去，確保內容一致。"""
     ext = os.path.splitext(path)[1].lower()
-    out = f"{os.path.splitext(path)[0]}_masked{ext}"
+    explicit = out is not None
+    if out is None:
+        out = f"{os.path.splitext(path)[0]}_masked{ext}"
     existed = os.path.exists(out)
     func = handler_media.mask_pdf if ext == ".pdf" else handler_media.mask_image
-    entries = list(func(path, out, handler_media.DEFAULT_MAP_FILE) or [])
+    try:
+        entries = list(func(path, out, handler_media.DEFAULT_MAP_FILE) or [])
+    except Exception:
+        if explicit:                       # 失敗時不要留下寫到一半的檔案
+            shutil.copy2(path, out)
+        raise
     if not entries:
-        if not existed and os.path.exists(out):
+        if explicit:
+            shutil.copy2(path, out)
+        elif not existed and os.path.exists(out):
             try:
                 os.remove(out)
             except OSError:
@@ -508,6 +430,9 @@ def dispatch_files(paths, mapping) -> list:
 
 
 # ---------- 資料夾掃描 ----------
+_OUT_DIR_RE = re.compile(re.escape(SCAN_OUTPUT_SUFFIX) + r"(_\d+)?$")
+
+
 def _risk_of(labels):
     if not labels:
         return "無"
@@ -516,13 +441,28 @@ def _risk_of(labels):
     return "中"
 
 
+def make_output_dir(folder):
+    """同層、名稱不同的輸出資料夾路徑：<原名>_masked，已存在就 _masked_2、_masked_3…"""
+    folder = os.path.abspath(folder)
+    parent, name = os.path.split(folder)
+    if not name:
+        raise ValueError("不能掃描磁碟根目錄 (找不到同層可以建立輸出資料夾的位置)")
+    if _OUT_DIR_RE.search(name):
+        raise ValueError(f"「{name}」看起來已經是遮蔽後的輸出資料夾，請選擇原始資料夾")
+    cand, n = os.path.join(parent, name + SCAN_OUTPUT_SUFFIX), 2
+    while os.path.exists(cand):
+        cand = os.path.join(parent, f"{name}{SCAN_OUTPUT_SUFFIX}_{n}")
+        n += 1
+    return cand
+
+
 def list_scan_files(folder, recursive=True):
-    """列出資料夾內可處理的檔案 (略過已產生的 *_masked 檔與 SCAN_SKIP_DIRS)"""
+    """列出資料夾內可處理的檔案 (略過 SCAN_SKIP_DIRS、舊的 *_masked 檔與先前產生的輸出資料夾)"""
     supported = CODE_EXTENSIONS | MEDIA_EXTENSIONS | TEXT_FILE_EXTENSIONS | TABLE_EXTENSIONS
     paths = []
     if recursive:
         for root, dirs, names in os.walk(folder):
-            dirs[:] = [d for d in dirs if d not in SCAN_SKIP_DIRS]
+            dirs[:] = [d for d in dirs if d not in SCAN_SKIP_DIRS and not _OUT_DIR_RE.search(d)]
             paths += [os.path.join(root, n) for n in names]
     else:
         paths = [os.path.join(folder, n) for n in os.listdir(folder)
@@ -535,14 +475,28 @@ def list_scan_files(folder, recursive=True):
     return out
 
 
-def _scan_one(path, mapping):
-    ext = os.path.splitext(path)[1].lower()
-    name = os.path.basename(path)
-    res = {"path": path, "kind": "", "hits": 0, "labels": {}, "output": None, "error": None}
+def _read_text_file(path):
+    """讀文字檔並記住編碼，之後寫回同一種編碼 (換行符號也原樣保留)。無法判斷編碼回傳 (None, None)"""
+    raw = open(path, "rb").read()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw.decode("utf-8-sig"), "utf-8-sig"
+    for enc in ("utf-8", "cp950", "big5"):     # 同 notebook 的編碼讀取順序 (BOM 已在上面處理)
+        try:
+            return raw.decode(enc), enc
+        except UnicodeDecodeError:
+            continue
+    return None, None
+
+
+def _scan_one(src, dst, mapping):
+    """src = 原資料夾裡的檔案 (只讀)，dst = 輸出資料夾裡對應的複本 (檔名相同，在這裡就地遮蔽)"""
+    ext = os.path.splitext(dst)[1].lower()
+    name = os.path.basename(dst)
+    res = {"path": src, "output": None, "kind": "", "hits": 0, "labels": {}, "error": None}
 
     if ext in MEDIA_EXTENSIONS:
         res["kind"] = "圖片/PDF"
-        out, entries = _mask_media(path)
+        out, entries = _mask_media(src, dst)          # 從原檔讀、寫到複本，檔名不變
         res.update(output=out, hits=len(entries),
                    labels=dict(Counter(e.get("label") or "UNKNOWN" for e in entries)))
 
@@ -550,68 +504,79 @@ def _scan_one(path, mapping):
         res["kind"] = "表格"
         tagger = make_tagger(mapping, name)
         with contextlib.redirect_stdout(io.StringIO()):
-            out = handler_csv.mask_file(path, detect_cell, tagger)
-        if out:
+            tmp = handler_csv.mask_file(dst, detect_cell, tagger)     # 產生 <名稱>_masked.<副檔名>
+        if tmp:
+            os.replace(tmp, dst)                      # 換回原檔名
             tagger.flush()
-            report = list(getattr(handler_csv, "LAST_REPORT", []))   # [(欄名, 類型, 原因)]
-            res.update(output=out, hits=len(report), labels=dict(Counter(r[1] for r in report)))
+            report = list(getattr(handler_csv, "LAST_REPORT", []))    # [(欄名, 類型, 原因)]
+            res.update(output=dst, hits=len(report), labels=dict(Counter(r[1] for r in report)))
 
     else:
         is_code = ext in CODE_EXTENSIONS
         res["kind"] = "程式碼" if is_code else "文字"
-        with open(path, encoding="utf-8", errors="ignore") as f:
-            content = f.read()
+        content, enc = _read_text_file(dst)
+        if content is None:
+            raise ValueError("無法判斷文字編碼 (不是 UTF-8 / Big5)，已略過")
         with contextlib.redirect_stdout(io.StringIO()):
             masked, matches = _anonymize_full(content, mapping, is_code, False, True, name)
         if masked:
-            out = f"{os.path.splitext(path)[0]}_masked{ext}"
-            with open(out, "w", encoding="utf-8") as f:
-                f.write(masked)
-            res.update(output=out, hits=len(matches), labels=dict(Counter(m[2] for m in matches)))
+            with open(dst, "wb") as f:
+                f.write(masked.encode(enc))
+            res.update(output=dst, hits=len(matches), labels=dict(Counter(m[2] for m in matches)))
 
     res["risk"] = _risk_of(res["labels"]) if res["output"] else "無"
     return res
 
 
 def scan_folder(folder, mapping, recursive=True, progress=None):
-    """掃描資料夾內所有支援的檔案：偵測到敏感資訊的會產生 *_masked 去識別化檔案，
-    並記錄進敏感清單。回傳每個檔案的結果 (高風險在前)：
-        {"path","kind","hits","labels","output","error","risk"}"""
-    files = list_scan_files(folder, recursive)
-    print(f"[掃描] {folder}：共 {len(files)} 個可處理的檔案 (子資料夾: {'含' if recursive else '不含'})")
+    """掃描資料夾：
+        1. 在同層建立新資料夾 (<原名>_masked)，先把原資料夾裡的所有東西複製過去；
+        2. 只對複製出來的檔案處理：檔名不變，有敏感資料的檔案內容會被遮蔽，其他檔案維持原樣；
+        3. 原資料夾完全不動。
+    回傳 (輸出資料夾路徑, 每個檔案的結果)。結果 (高風險在前)：
+        {"path": 原檔, "output": 輸出資料夾裡被遮蔽的檔案或 None, "kind","hits","labels","error","risk"}"""
+    folder = os.path.abspath(folder)
+    dest = make_output_dir(folder)
+    print(f"[掃描] 複製 {folder} -> {dest}")
+    shutil.copytree(folder, dest)
+
+    files = list_scan_files(dest, recursive)
+    print(f"[掃描] 共 {len(files)} 個可處理的檔案 (子資料夾: {'含' if recursive else '不含'})")
     results = []
     try:
-        for i, path in enumerate(files, 1):
+        for i, dst in enumerate(files, 1):
+            src = os.path.join(folder, os.path.relpath(dst, dest))
             if progress:
-                progress(i, len(files), path)
+                progress(i, len(files), src)
             try:
-                res = _scan_one(path, mapping)
+                res = _scan_one(src, dst, mapping)
             except Exception as e:
-                res = {"path": path, "kind": "", "hits": 0, "labels": {}, "output": None,
+                res = {"path": src, "output": None, "kind": "", "hits": 0, "labels": {},
                        "error": str(e), "risk": "錯誤"}
-                print(f"[錯誤] {path}：{e}")
+                print(f"[錯誤] {src}：{e}")
             else:
                 if res["output"]:
-                    print(f"[危險·{res['risk']}] {path}  ({res['kind']}，{res['hits']} 筆：{res['labels']})")
+                    print(f"[危險·{res['risk']}] {src}  ({res['kind']}，{res['hits']} 筆：{res['labels']})")
                 else:
-                    print(f"[安全] {path}")
+                    print(f"[安全] {src}")
             results.append(res)
     finally:
         save_map(mapping)   # 整批處理完才寫一次對照表
     order = {"高": 0, "中": 1, "錯誤": 2, "無": 3}
     results.sort(key=lambda r: (order.get(r["risk"], 9), r["path"]))
-    return results
+    return dest, results
 
 
-def format_scan_report(results):
-    """把掃描結果整理成文字，給 log / 對話框 / 匯出用"""
+def format_scan_report(results, dest=None):
+    """把掃描結果整理成文字，給 log / 對話框用"""
     danger = [r for r in results if r["output"]]
     errors = [r for r in results if r["error"]]
     lines = [f"共掃描 {len(results)} 個檔案：危險 {len(danger)} 個、安全 {len(results) - len(danger) - len(errors)} 個"
              + (f"、處理失敗 {len(errors)} 個" if errors else "")]
+    if dest:
+        lines.append(f"遮蔽後的資料夾：{dest}")
     for r in danger:
         lines.append(f"  [{r['risk']}] {r['path']}  ({r['kind']}，{r['hits']} 筆：{r['labels']})")
-        lines.append(f"       -> {r['output']}")
     for r in errors:
         lines.append(f"  [錯誤] {r['path']}：{r['error']}")
     return "\n".join(lines)
@@ -718,3 +683,47 @@ def warmup():
     for msg in errors:
         print(msg)
     print(f"[預熱] 完成，耗時 {time.time() - t0:.1f} 秒")
+
+
+# ---------- 圖片 / PDF：OCR 文字送模型前也做前處理 ----------
+def _install_media_preprocess():
+    """把 handler_media.detect_matches 包一層 (它在 handler_media 內部是用模組層級名稱呼叫的，所以 mask_image / mask_pdf 也會走到)：
+        OCR 文字 -> 前處理 -> 原本的偵測 -> 座標換算回 OCR 文字的位置 (之後對應回像素框的邏輯完全不用改)
+    另外補上敏感清單 / known_entities.txt / 安全清單 (圖片/PDF 原本不會套用)；
+    偵測結果不是 5 元素 tuple (start, end, label, score, source) 時只做前處理，不補清單。
+    預處理結果認不得時退回用原文偵測，不會給出錯誤座標。"""
+    orig = getattr(handler_media, "detect_matches", None)
+    if orig is None:
+        print("[前處理] 找不到 handler_media.detect_matches，圖片/PDF 未套用前處理")
+        return
+    if getattr(orig, "_preprocessed", False):
+        return
+
+    def detect_matches(text, *args, **kwargs):
+        if not isinstance(text, str):
+            return orig(text, *args, **kwargs)
+        res = None
+        if preprocess.APPLY_TO_MEDIA:
+            norm = preprocess.preprocess(text, html=False)      # OCR 文字不做網頁標籤刪除
+            if not norm.identity:
+                res = norm.map_matches(orig(norm.text, *args, **kwargs))
+        if res is None:
+            res = list(orig(text, *args, **kwargs))
+        if all(isinstance(m, tuple) and len(m) == 5 for m in res):
+            extra = []
+            fn = getattr(handler_text, "detect_known_entities", None)
+            if fn:
+                extra += fn(text)
+            extra += detect_known(text)
+            res = list(dict.fromkeys(res + [tuple(m) for m in extra]))
+            safe = entity_store.safe_values()
+            if safe:
+                res = [m for m in res if text[m[0]:m[1]].strip() not in safe]
+        return res
+
+    detect_matches._preprocessed = True
+    detect_matches.__wrapped__ = orig
+    handler_media.detect_matches = detect_matches
+
+
+_install_media_preprocess()

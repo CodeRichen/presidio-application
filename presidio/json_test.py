@@ -10,6 +10,8 @@
 
 說明：
     這版直接呼叫 core.py，不再 import main.py，也不再假造 win32 / pyperclip / pynput 模組。
+    偵測走 core.detect_entities，也就是和實際遮蔽相同的流程 (含 preprocess 前處理、已知實體 / 敏感清單 / 安全清單)；
+    想比較「有沒有前處理」的 F1，改 preprocess.ENABLED；想排除清單的影響，把 core.USE_KNOWN_ITEMS 設成 False。
     快速鍵、模擬貼上、剪貼簿同步屬於 main.py 的流程，不在這支測試範圍內。
     遮蔽時用 save=False，不會把對照表寫到硬碟上。
 
@@ -160,15 +162,11 @@ def run_text_flow(article, answer, result_file):
         _fail("匯入 core.py（請確認 core.py / handler_*.py 在 presidio 的上一層資料夾）")
 
     def detect(text):
-        """與 core.anonymize_text 相同的偵測 + 重疊處理，但回傳位置供評分用。"""
+        """與 core.anonymize_text 完全相同的偵測 (前處理 -> 規則與模型 -> 座標換算回原文 -> 清單 -> 重疊處理)，
+        但回傳位置供評分用。座標是原文的位置，所以和答案的位置可以直接比對。"""
         try:
             with _silence_stdout():
-                is_code = core.is_code_text(text)
-                h = core.handler_code if is_code else core.handler_text
-                matches = list(h.detect(text))
-                if core.handler_field is not None:
-                    matches += list(core.handler_field.detect(text))
-                matches = core.merge_overlaps(matches, core.handler_text.contains_chinese(text))
+                is_code, matches = core.detect_entities(text)
         except Exception:
             _fail("文字/程式碼偵測")
         return is_code, [(s, e, text[s:e], label) for s, e, label, *_ in matches]
