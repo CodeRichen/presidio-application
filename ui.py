@@ -3,7 +3,9 @@ ui.py - 剪貼簿敏感資訊防護 圖形介面 (tkinter，不需額外安裝)
 ====================================================
 與 main.py 互相獨立，只 import core.py / entity_store.py / hotkey_service.py。
 分頁：
-  - 文字      貼上/輸入文字 -> 遮蔽 / 還原 / 自動；送模型前統一先做前處理 (全形轉半形、隱形字元、網頁標籤、簡繁、空白)，
+  - 文字      貼上/輸入文字，內容類型二選一 (程式 / 一般文字) 後按「判斷」：有標籤就還原、沒標籤就遮蔽。
+              判斷完輸入框會清空，結果接在結果框原有內容後面 (結果不會被清掉，要清再按「清空」)。
+              送模型前統一先做前處理 (全形轉半形、隱形字元、網頁標籤、簡繁、空白)，
               可開關，也能「預覽前處理」看每一步改了什麼；遮蔽只動被偵測到的那一段，原文其餘部分不變
   - 檔案      選擇多個檔案 -> 去識別化
   - 資料夾掃描 選一個資料夾 -> 在同層建立 <原名>_masked，先複製所有內容，再只遮蔽複本裡含敏感資料的檔案
@@ -36,6 +38,9 @@ _SPECIAL_KEYS = {"space": "<space>", "Return": "<enter>", "Tab": "<tab>", "BackS
                  "Delete": "<delete>", "Insert": "<insert>", "Home": "<home>", "End": "<end>",
                  "Prior": "<page_up>", "Next": "<page_down>",
                  "Up": "<up>", "Down": "<down>", "Left": "<left>", "Right": "<right>"}
+
+KIND_CODE = "程式"          # 文字分頁的內容類型 (二選一)
+KIND_TEXT = "一般文字"
 
 AUTO_LABEL = "自動判斷 (由模型決定)"
 LABEL_CHOICES = [AUTO_LABEL, "PERSON", "ORGANIZATION", "ADDRESS", "LOCATION", "POSITION", "TW_PHONE",
@@ -142,17 +147,15 @@ class App(tk.Tk):
         bar = ttk.Frame(t)
         bar.pack(fill="x", pady=4)
         ttk.Label(bar, text="內容類型：").pack(side="left")
-        self.kind_var = tk.StringVar(value="自動判斷")
-        ttk.Combobox(bar, textvariable=self.kind_var, width=10, state="readonly",
-                     values=["自動判斷", "一般文字", "程式碼"]).pack(side="left", padx=4)
+        self.kind_var = tk.StringVar(value=KIND_TEXT)
+        # 兩個互斥的切換按鈕：按下其中一個，另一個自動彈起 (共用同一個 variable)
+        for kind in (KIND_CODE, KIND_TEXT):
+            tk.Radiobutton(bar, text=kind, variable=self.kind_var, value=kind, indicatoron=False,
+                           width=9, pady=2, selectcolor="#bfdbfe").pack(side="left", padx=2)
         self.btn_read = ttk.Button(bar, text="讀取剪貼簿", command=self.read_clipboard_text)
         self.btn_read.pack(side="left", padx=(12, 2))
-        self.btn_auto = ttk.Button(bar, text="自動 (有標籤還原/否則遮蔽)", command=lambda: self.run_text("auto"))
-        self.btn_auto.pack(side="left", padx=2)
-        self.btn_mask = ttk.Button(bar, text="遮蔽", command=lambda: self.run_text("mask"))
-        self.btn_mask.pack(side="left", padx=2)
-        self.btn_restore = ttk.Button(bar, text="還原", command=lambda: self.run_text("restore"))
-        self.btn_restore.pack(side="left", padx=2)
+        self.btn_run = ttk.Button(bar, text="判斷", command=self.run_text)
+        self.btn_run.pack(side="left", padx=2)
         self.pp_var = tk.BooleanVar(value=preprocess.ENABLED)
         ttk.Checkbutton(bar, text="送模型前先前處理", variable=self.pp_var,
                         command=self._toggle_preprocess).pack(side="left", padx=(14, 2))
@@ -238,7 +241,7 @@ class App(tk.Tk):
         self.status = tk.StringVar(value="就緒")
         ttk.Label(self, textvariable=self.status, anchor="w").pack(fill="x", padx=8, pady=(0, 4))
 
-        self._busy_widgets = [self.btn_read, self.btn_auto, self.btn_mask, self.btn_restore,
+        self._busy_widgets = [self.btn_read, self.btn_run,
                               self.btn_run_files, self.btn_scan, self.btn_add]
         self.refresh_lists()
 
@@ -613,7 +616,8 @@ class App(tk.Tk):
         ttk.Label(bar, textvariable=self.svc_state).pack(side="left", padx=8)
 
         tip = ("說明：\n"
-               "• 模式 A：貼上欄有值。複製只產生覆蓋結果，按貼上快速鍵才會貼出去，原生 Ctrl+C / Ctrl+V 不受影響。\n"
+               "• 模式 A：貼上欄有值。複製只產生覆蓋結果，按貼上快速鍵才會貼出去。若設成 Ctrl+C / Ctrl+V，原生複製貼上會被本程式取代；\n"
+               "  設成其他組合 (例如 Ctrl+Alt+C / Ctrl+Alt+V) 則原生 Ctrl+C / Ctrl+V 不受影響。\n"
                "• 模式 B：貼上欄清空，複製鍵通常設成 Ctrl+C。複製時直接覆寫剪貼簿，之後用原生 Ctrl+V 貼上；"
                "處理完成前就貼上會貼出原始內容。\n"
                "• 設定存在 hotkeys.json，命令列的 main.py 啟動時也會讀取同一份設定。\n"
@@ -777,27 +781,36 @@ class App(tk.Tk):
         self.txt_in.insert("1.0", content)
         print(f"[讀取] 已從剪貼簿讀入 {len(content)} 個字元")
 
-    def run_text(self, action):
+    def run_text(self):
+        """判斷：輸入含標籤就還原、不含就遮蔽 (action="auto")；規則依「程式 / 一般文字」按鈕決定。
+        處理成功後清空輸入框，結果接在結果框原有內容後面 (結果框不清空)。"""
         text = self.txt_in.get("1.0", "end-1c")
         if not text.strip():
             messagebox.showinfo("提示", "輸入框是空的")
             return
-        is_code = {"自動判斷": None, "一般文字": False, "程式碼": True}[self.kind_var.get()]
+        is_code = (self.kind_var.get() == KIND_CODE)
 
         def job():
             print("\n" + "=" * 50)
-            return core.process_text(text, self.mapping, action=action, is_code=is_code)
+            return core.process_text(text, self.mapping, action="auto", is_code=is_code)
 
         def done(result):
-            self.txt_out.delete("1.0", "end")
-            if result:
-                self.txt_out.insert("1.0", result)
-            else:
-                self.txt_out.insert("1.0", text)
+            if not result:
                 print("[結果] 未偵測到需要遮蔽 / 還原的內容，結果與輸入相同")
+            self._append_result(result or text)
+            self.txt_in.delete("1.0", "end")      # 判斷完才清空輸入；處理失敗時不會走到這裡，輸入會保留
             self.refresh_lists()
 
         self._start(job, "處理文字中…", done)
+
+    def _append_result(self, text):
+        """把結果接在結果框原有內容後面 (原本的結果不動)。
+        原內容結尾沒有換行時先補一個換行，避免兩段黏在同一行。"""
+        existing = self.txt_out.get("1.0", "end-1c")
+        if existing and not existing.endswith("\n"):
+            self.txt_out.insert("end", "\n")
+        self.txt_out.insert("end", text)
+        self.txt_out.see("end")
 
     def _toggle_preprocess(self):
         preprocess.ENABLED = self.pp_var.get()
@@ -810,10 +823,19 @@ class App(tk.Tk):
         if not text.strip():
             messagebox.showinfo("提示", "輸入框是空的")
             return
-        html = self.kind_var.get() != "程式碼"          # 程式碼不做網頁標籤刪除，與實際偵測一致
+        html = self.kind_var.get() != KIND_CODE        # 程式不做網頁標籤刪除，與實際偵測一致
         desc, body = preprocess.describe(text, html=html)
-        self.txt_out.delete("1.0", "end")
-        self.txt_out.insert("1.0", desc + "\n\n──── 送模型的文字 ────\n" + body)
+        # 另開視窗顯示，不動結果框 (結果框裡累積的結果不能被預覽蓋掉)
+        self._show_text_window("前處理預覽", desc + "\n\n──── 送模型的文字 ────\n" + body)
+
+    def _show_text_window(self, title, content):
+        win = tk.Toplevel(self)
+        win.title(title)
+        win.geometry("760x520")
+        box = scrolledtext.ScrolledText(win, wrap="word")
+        box.pack(fill="both", expand=True)
+        box.insert("1.0", content)
+        box.configure(state="disabled")
 
     def copy_result_text(self):
         text = self.txt_out.get("1.0", "end-1c")

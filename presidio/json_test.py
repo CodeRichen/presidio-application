@@ -2,7 +2,10 @@
 """
 測試程式_多版本評分_檔案輸入版.py（放在 presidio 資料夾底下；core.py / handler_*.py 在上一層）
 
-用法：python 測試程式_多版本評分_檔案輸入版.py [檔名]   （省略檔名則用 t1.json）
+用法：python 測試程式_多版本評分_檔案輸入版.py [檔名] [--ablation]   （省略檔名則用 t1.json）
+    --ablation    只對 .json：同一篇文章依序用「不前處理 / 每個前處理步驟單獨開 / 目前預設 / 舊版全開」各跑一次，
+                  列出 P / R / F1，並指出每個設定相對於「不前處理」多命中、漏掉、多誤判了哪些實體，
+                  用來找出是哪一個前處理步驟讓分數變差 (或變好)。
     .json         : 含 "article" 與 "answer"，走文字/程式碼流程
                     （core.anonymize_text 遮蔽 -> core.deanonymize_text 還原 + 三種評分）
     .pdf / 圖片   : 呼叫 handler_media.mask_pdf / mask_image，答案取自同名 .json 的 "answer"，
@@ -11,7 +14,8 @@
 說明：
     這版直接呼叫 core.py，不再 import main.py，也不再假造 win32 / pyperclip / pynput 模組。
     偵測走 core.detect_entities，也就是和實際遮蔽相同的流程 (含 preprocess 前處理、已知實體 / 敏感清單 / 安全清單)；
-    想比較「有沒有前處理」的 F1，改 preprocess.ENABLED；想排除清單的影響，把 core.USE_KNOWN_ITEMS 設成 False。
+    評分時預設【不套用】敏感清單 / known_entities.txt / 安全清單 (見下方 USE_LISTS)：這些清單是使用過程中累積的，
+    混進來會讓不同次的分數不能比較，清單裡若有答案也等於拿答案考試。
     快速鍵、模擬貼上、剪貼簿同步屬於 main.py 的流程，不在這支測試範圍內。
     遮蔽時用 save=False，不會把對照表寫到硬碟上。
 
@@ -35,6 +39,7 @@ except Exception:
     _SYSTEM_PYPERCLIP = None
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+USE_LISTS = False   # True 才會把敏感清單 / known_entities.txt / 安全清單算進偵測 (評分時請維持 False)
 sys.path.insert(0, os.path.dirname(SCRIPT_DIR))   # core.py / handler_*.py 所在資料夾
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".gif", ".webp"}
 PDF_EXTS = {".pdf"}
@@ -58,6 +63,29 @@ VERSIONS = [  # (標題, 位置需完全一致, 類型需相同)
 def _silence_stdout():
     with open(os.devnull, "w", encoding="utf-8") as devnull, contextlib.redirect_stdout(devnull):
         yield
+
+
+def _apply_list_setting(core):
+    """USE_LISTS=False 時把三種清單都關掉 (只影響這個測試程序，不會改到任何清單檔)"""
+    core.USE_KNOWN_ITEMS = USE_LISTS
+    if not USE_LISTS:
+        core.entity_store.safe_values = lambda: frozenset()
+        core.handler_text.detect_known_entities = lambda text: []   # handler_text.detect 內部也是呼叫這個名稱
+
+
+def _expected_positions(article, answer):
+    """答案 (值, 類型) -> (start, end, 值, 類型)；同值多次出現時，依序對應到不同位置"""
+    expected, cursor = [], {}
+    for value, label in answer:
+        idx = article.find(value, cursor.get(value, 0))
+        if idx == -1:
+            idx = article.find(value)
+        if idx == -1:
+            expected.append((None, None, value, label))
+        else:
+            cursor[value] = idx + 1
+            expected.append((idx, idx + len(value), value, label))
+    return expected
 
 
 def _fail(step):
@@ -160,6 +188,7 @@ def run_text_flow(article, answer, result_file):
         import core
     except Exception:
         _fail("匯入 core.py（請確認 core.py / handler_*.py 在 presidio 的上一層資料夾）")
+    _apply_list_setting(core)
 
     def detect(text):
         """與 core.anonymize_text 完全相同的偵測 (前處理 -> 規則與模型 -> 座標換算回原文 -> 清單 -> 重疊處理)，
@@ -194,6 +223,7 @@ def run_text_flow(article, answer, result_file):
     out("=" * 78)
     out("剪貼簿敏感資訊防護 - 單篇文章 遮蔽/還原 測試報告（多版本評分，透過 core）")
     out(f"文章長度：{len(article)} 字元　答案筆數：{len(answer)}")
+    out(f"清單 (敏感清單 / known_entities / 安全清單)：{'開啟' if USE_LISTS else '關閉 (評分用)'}")
     out("=" * 78)
 
     # 遮蔽 (save=False：不寫對照表檔到硬碟)；沒偵測到任何內容時 anonymize_text 回傳 None
@@ -211,21 +241,115 @@ def run_text_flow(article, answer, result_file):
     out("(快速鍵 / 貼上流程屬於 main.py，不在此測試範圍)")
 
     is_code, detected = detect(article)
-    expected, cursor = [], {}
-    for value, label in answer:   # 同值多次出現時，依序對應到不同位置
-        idx = article.find(value, cursor.get(value, 0))
-        if idx == -1:
-            idx = article.find(value)
-        if idx == -1:
-            expected.append((None, None, value, label))
-        else:
-            cursor[value] = idx + 1
-            expected.append((idx, idx + len(value), value, label))
+    expected = _expected_positions(article, answer)
 
     out(f"[分類] 文章整體判斷: {'程式碼' if is_code else '一般文字'}")
     out(f"\n解答共 {len(answer)} 筆: {answer}")
     out(f"實際偵測到 {len(detected)} 筆: {[(v, l) for _, _, v, l in detected]}")
     finish(lines, evaluate(expected, detected, out), result_file)
+
+
+# ---------------------------- 前處理逐項比較 (--ablation) ----------------------------
+_PP_KEYS = ["ENABLED", "OPT_NFKC", "NFKC_KEEP", "OPT_INVISIBLE", "OPT_HTML", "CHINESE_CONVERT", "OPT_WHITESPACE"]
+
+
+def run_ablation(article, answer, result_file):
+    try:
+        import core
+        import preprocess as pp
+    except Exception:
+        _fail("匯入 core.py / preprocess.py")
+    _apply_list_setting(core)
+
+    default = {k: getattr(pp, k) for k in _PP_KEYS}
+    off = dict(default, ENABLED=True, OPT_NFKC=False, OPT_INVISIBLE=False, OPT_HTML=False,
+               CHINESE_CONVERT=None, OPT_WHITESPACE=False)
+    configs = [
+        ("0 不做前處理 (基準)", dict(default, ENABLED=False)),
+        ("1 只做 NFKC (保留中文標點)", dict(off, OPT_NFKC=True)),
+        ("2 只做 NFKC (中文標點也轉半形)", dict(off, OPT_NFKC=True, NFKC_KEEP="")),
+        ("3 只做隱形字元清理", dict(off, OPT_INVISIBLE=True)),
+        ("4 只做網頁標籤處理", dict(off, OPT_HTML=True)),
+        ("5 只做簡繁統一 auto", dict(off, CHINESE_CONVERT="auto")),
+        ("6 只做簡轉繁 (一律)", dict(off, CHINESE_CONVERT="s2t")),
+        ("7 只做繁轉簡 (一律)", dict(off, CHINESE_CONVERT="t2s")),
+        ("8 只做空白換行整理", dict(off, OPT_WHITESPACE=True)),
+        ("9 目前預設組合", dict(default)),
+        ("10 舊版全開 (NFKC 全轉 / 空白整理 / 一律簡轉繁)",
+         dict(default, ENABLED=True, OPT_NFKC=True, NFKC_KEEP="", OPT_INVISIBLE=True, OPT_HTML=True,
+              CHINESE_CONVERT="s2t", OPT_WHITESPACE=True)),
+    ]
+    expected = _expected_positions(article, answer)
+
+    print("\n[暖機] 載入模型中...")
+    try:
+        with _silence_stdout():
+            core.warmup()
+    except Exception:
+        _fail("core.warmup")
+    print("[暖機] 完成\n")
+
+    results = []
+    for name, cfg in configs:
+        for k, v in cfg.items():
+            setattr(pp, k, v)
+        try:
+            with _silence_stdout():
+                _, matches = core.detect_entities(article)
+        except Exception:
+            _fail(f"偵測 ({name})")
+        detected = [(s_, e_, article[s_:e_], label) for s_, e_, label, *_ in matches]
+        row = {"name": name, "n_det": len(detected)}
+        for key, (_, exact, by_label) in zip(("v1", "v2", "v3"), VERSIONS):
+            tp, fp, fn = score(expected, detected, exact, by_label)
+            row[key] = (tp, fp, fn, *_prf(tp, len(fp), len(fn)))
+        results.append(row)
+    for k, v in default.items():          # 還原設定
+        setattr(pp, k, v)
+
+    lines = []
+    out = lines.append
+    out("=" * 100)
+    out(f"前處理逐項比較 (--ablation)　文章 {len(article)} 字元　答案 {len(answer)} 筆　清單: {'開啟' if USE_LISTS else '關閉'}")
+    out("版本一=位置完全一致+類型相同　版本二=範圍重疊+類型相同　版本三=範圍重疊(不看類型)")
+    out("=" * 100)
+    out(f"{'設定':<42}{'偵測':>5} | {'v1 TP/FP/FN':>12}{'P':>8}{'R':>8}{'F1':>8}{'ΔF1':>8} | {'v2 F1':>8}{'v3 F1':>8}")
+    base_f1 = results[0]["v1"][5]
+    pct = lambda x: f"{x:.1%}" if x == x else "N/A"
+    for r in results:
+        tp, fp, fn, p, rc, f1 = r["v1"]
+        delta = f"{(f1 - base_f1) * 100:+.1f}" if f1 == f1 and base_f1 == base_f1 else "N/A"
+        out(f"{r['name']:<42}{r['n_det']:>5} | {f'{tp}/{len(fp)}/{len(fn)}':>12}{pct(p):>8}{pct(rc):>8}{pct(f1):>8}{delta:>8} | "
+            f"{pct(r['v2'][5]):>8}{pct(r['v3'][5]):>8}")
+
+    out("\n" + "=" * 100)
+    out("相對於「不做前處理」(版本一，位置完全一致) 的差異：")
+    base_fp, base_fn = set(results[0]["v1"][1]), set(results[0]["v1"][2])
+    fmt = lambda it: f"{pp.vis(it[2], 36)!r} [{it[3]}] @{it[0]}:{it[1]}"
+    for r in results[1:]:
+        fp, fn = set(r["v1"][1]), set(r["v1"][2])
+        found, lost = sorted(base_fn - fn, key=str), sorted(fn - base_fn, key=str)
+        new_fp, gone_fp = sorted(fp - base_fp, key=str), sorted(base_fp - fp, key=str)
+        if not (found or lost or new_fp or gone_fp):
+            out(f"\n▸ {r['name']}：和基準完全相同")
+            continue
+        out(f"\n▸ {r['name']}")
+        for it in found:
+            out(f"    + 多命中 (原本漏掉): {fmt(it)}")
+        for it in lost:
+            out(f"    - 不再命中 (原本抓到): {fmt(it)}")
+        for it in new_fp:
+            out(f"    ! 新增誤判: {fmt(it)}")
+        for it in gone_fp:
+            out(f"    ✓ 少了一筆誤判: {fmt(it)}")
+    out("=" * 100)
+    print("\n".join(lines))
+    try:
+        with open(result_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        print(f"報告已寫入：{result_file}")
+    except Exception:
+        _fail(f"寫入報告檔 {result_file}")
 
 
 # ---------------------------- 分支二：pdf / 圖片 ----------------------------
@@ -303,13 +427,15 @@ def run_media_flow(path, answer, result_file):
 
 # ------------------------------- 進入點 -------------------------------
 def main_test():
-    raw = sys.argv[1] if len(sys.argv) > 1 else "t1.json"
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    ablation = "--ablation" in sys.argv[1:]
+    raw = args[0] if args else "fake/2000char.json"
     path = _resolve_path(raw)
     if path is None:
         sys.exit(f"[錯誤] 找不到檔案：{raw}")
     stem, ext = os.path.splitext(os.path.basename(path))
     ext = ext.lower()
-    result_file = os.path.join(SCRIPT_DIR, f"{stem}_{ext.lstrip('.')}_result.txt")
+    result_file = os.path.join(SCRIPT_DIR, f"{stem}_{ext.lstrip('.')}_{'ablation' if ablation else 'result'}.txt")
 
     if ext == ".json":
         try:
@@ -318,7 +444,7 @@ def main_test():
             article, answer = data["article"], data["answer"]
         except Exception:
             _fail(f"讀取測試檔 {path}（需為合法 JSON，含 article / answer）")
-        run_text_flow(article, answer, result_file)
+        (run_ablation if ablation else run_text_flow)(article, answer, result_file)
     elif ext in PDF_EXTS | IMAGE_EXTS:
         ans_path = _resolve_path(os.path.splitext(raw)[0] + ".json")
         if ans_path is None:

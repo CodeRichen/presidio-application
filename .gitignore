@@ -1,7 +1,3 @@
-presidio/real
-prompt.txt
-test/offline_model
-*.ps1
 # Python virtual environment
 .venv/
 
@@ -21,3 +17,10 @@ test/pdf_mask_restore_smoke_samples/
 test/ocr_pdf_failure_samples/
 test/ocr_pdf_fallback_samples/
 test/ocr_pdf_zoom_samples/
+
+#other
+presidio/real
+prompt.txt
+test/offline_model
+*.ps1
+hotkeys.json
