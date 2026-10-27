@@ -6,8 +6,8 @@
 
 第 5 個欄位 source 是這筆結果的「來源」，固定是下面三種之一：
     "regex" -> 正則規則命中 (score 固定 None)
-    "en"    -> Presidio 英文模型 (spaCy en_core_web_sm + Presidio 內建規則式辨識器)
-    "zh"    -> 中文 NER 模型 (ZH_NER_MODEL_NAME)
+    "en"    -> Presidio 英文模型 (環境裡的 en_core_web_sm，或 models/en_core_web_sm；都沒有就停用) + Presidio 內建規則式辨識器
+    "zh"    -> 中文 NER 模型 (環境的 Hugging Face 快取，或 models/roberta-base-finetuned-cluener2020-chinese；都沒有就停用)
 main.py / handler_media.py 在合併重疊結果時，就是靠這個欄位決定「規則 > 語言吻合的模型 > 語言
 不吻合的模型」的優先序，所以每個偵測函式都要老實標好 source，不能省略。
 
@@ -29,19 +29,50 @@ EN_NER_LABELS = {
     "LOCATION",
 }
 
-# ---------- 英文：走 Presidio，含內建的規則式辨識器 (SSN/IBAN/信用卡/加密貨幣錢包/IP) + spaCy 英文 NER ----------
-try:
-    from presidio_analyzer import AnalyzerEngine
-    from presidio_analyzer.nlp_engine import NlpEngineProvider
+import app_env  # 判斷環境有沒有模型、models 資料夾位置 (APP_DIR/models)；打包成 EXE 後也能正確找到 EXE 旁邊的模型
 
-    nlp_configuration = {
-        "nlp_engine_name": "spacy",
-        "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],  # 只需要英文，中文不用 spaCy
-    }
-    _nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
-    _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["en"])
-except Exception:
-    _analyzer = None  # 完全沒裝 presidio 或模型沒下載時，自動退化成只用下面的正則規則
+# 啟動時各模型的載入結果，core.warmup() 會把這些訊息印到記錄區，讓使用者知道哪些偵測功能目前停用
+MODEL_STATUS = []
+
+# 模型尋找順序：① 先查「環境」(pip 裝好的 spaCy 模型 / 本機 Hugging Face 快取) → ② 再看 models/ 資料夾 → ③ 都沒有就停用
+EN_MODEL_PACKAGE = "en_core_web_sm"                                   # 環境裡的 spaCy 模型套件名稱
+EN_MODEL_DIR_NAME = "en_core_web_sm"                                  # models/ 底下的資料夾名稱
+ZH_MODEL_DIR_NAME = "roberta-base-finetuned-cluener2020-chinese"      # models/ 底下的資料夾名稱
+
+# ---------- 英文：走 Presidio，含內建的規則式辨識器 (SSN/IBAN/信用卡/加密貨幣錢包/IP) + spaCy 英文 NER ----------
+# 先查環境有沒有 en_core_web_sm，沒有再看 models/en_core_web_sm 資料夾；兩邊都沒有就停用英文 NER，只用正則規則
+_analyzer = None
+_en_sources = []                                   # [(來源說明, spaCy 模型名稱或資料夾路徑), ...] 依優先序嘗試
+if app_env.has_spacy_package(EN_MODEL_PACKAGE):
+    _en_sources.append(("環境已安裝", EN_MODEL_PACKAGE))
+_en_model_dir = app_env.find_model_dir(EN_MODEL_DIR_NAME)
+if _en_model_dir is not None:
+    _en_sources.append(("models 資料夾", _en_model_dir))
+
+if not _en_sources:
+    MODEL_STATUS.append(f"[停用] 英文 NER (Presidio)：環境沒有 {EN_MODEL_PACKAGE}，"
+                        f"{os.path.join(app_env.MODELS_DIR, EN_MODEL_DIR_NAME)} 也找不到，"
+                        "英文的人名/地點/機構不會被偵測 (正則規則照常運作)")
+else:
+    _en_errors = []
+    for _label, _model in _en_sources:
+        try:
+            from presidio_analyzer import AnalyzerEngine
+            from presidio_analyzer.nlp_engine import NlpEngineProvider
+
+            nlp_configuration = {
+                "nlp_engine_name": "spacy",
+                "models": [{"lang_code": "en", "model_name": _model}],  # 只需要英文，中文不用 spaCy
+            }
+            _nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
+            _analyzer = AnalyzerEngine(nlp_engine=_nlp_engine, supported_languages=["en"])
+            MODEL_STATUS.append(f"[啟用] 英文 NER (Presidio + spaCy {EN_MODEL_PACKAGE})，來源：{_label}")
+            break
+        except Exception as e:           # 環境裡的壞掉 / presidio 沒包進程式時，換下一個來源試試
+            _analyzer = None
+            _en_errors.append(f"{_label}：{e}")
+    else:
+        MODEL_STATUS.append("[停用] 英文 NER (Presidio) 載入失敗，只用正則規則 -> " + "；".join(_en_errors))
 
 EXCLUDED_PRESIDIO_LABELS = {"US_DRIVER_LICENSE"}  # 不想遮蔽的 Presidio 類型，往這個 set 加
 
@@ -62,7 +93,7 @@ def presidio_en(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
 
 
 # ---------- 中文：不經過 Presidio/spaCy，直接呼叫 Hugging Face 模型 ----------
-ZH_NER_MODEL_NAME = "uer/roberta-base-finetuned-cluener2020-chinese"  # 想換模型只改這個字串
+ZH_NER_MODEL_NAME = "uer/roberta-base-finetuned-cluener2020-chinese"  # 模型出處 (環境快取的名稱、prepare_models.py 下載用)
 MIN_ZH_NER_SCORE = 0.7  # 信心分數門檻，低於這個值直接丟掉不採用；想放寬/收緊調這個數字即可
 
 # CLUENER2020 的標籤 -> 我們自己的實體名稱。book/game/movie/scene 跟隱私/敏感資訊無關
@@ -76,12 +107,42 @@ _ZH_LABEL_MAP = {
     "position": "POSITION",
 }
 _zh_ner_pipeline = None
-try:
-    from transformers import pipeline
-    print(f"正在載入中文 NER 模型 ({ZH_NER_MODEL_NAME})...")
-    _zh_ner_pipeline = pipeline("ner", model=ZH_NER_MODEL_NAME, aggregation_strategy="simple")
-except Exception as e:
-    print(f"[警告] 中文 NER 模型載入失敗，中文將只用正則規則：{e}")
+# 先查環境 (本機 Hugging Face 快取) 有沒有中文 NER 模型，沒有再看 models/ 資料夾；兩邊都沒有就停用，不連網下載
+_zh_sources = []                                   # [(來源說明, 模型名稱或資料夾路徑), ...] 依優先序嘗試
+if app_env.has_hf_cached(ZH_NER_MODEL_NAME):
+    _zh_sources.append(("環境 (Hugging Face 快取)", ZH_NER_MODEL_NAME))
+_zh_model_dir = app_env.find_model_dir(ZH_MODEL_DIR_NAME)
+if _zh_model_dir is not None:
+    _zh_sources.append(("models 資料夾", _zh_model_dir))
+
+if not _zh_sources:
+    # 兩邊都沒有就連 transformers 都不 import (啟動更快)，中文只用正則規則
+    MODEL_STATUS.append(f"[停用] 中文 NER：環境沒有 {ZH_NER_MODEL_NAME}，"
+                        f"{os.path.join(app_env.MODELS_DIR, ZH_MODEL_DIR_NAME)} 也找不到，"
+                        "中文的人名/地址/機構不會被偵測 (正則規則照常運作)")
+else:
+    try:
+        from transformers import pipeline
+    except ModuleNotFoundError as e:
+        pipeline = None
+        MODEL_STATUS.append(f"[停用] 中文 NER：沒有安裝 transformers 套件，中文只用正則規則：{e}")
+    except Exception as e:
+        pipeline = None
+        MODEL_STATUS.append("[停用] 中文 NER：transformers 有安裝但匯入失敗 "
+                            f"(常見原因是 torch 等套件版本不合)，中文只用正則規則：{e}")
+    if pipeline is not None:
+        _zh_errors = []
+        for _label, _model in _zh_sources:
+            try:
+                print(f"正在載入中文 NER 模型 ({_label}：{_model})...")
+                _zh_ner_pipeline = pipeline("ner", model=_model, aggregation_strategy="simple")
+                MODEL_STATUS.append(f"[啟用] 中文 NER ({ZH_NER_MODEL_NAME})，來源：{_label}")
+                break
+            except Exception as e:       # 環境裡的快取不完整 / 損壞時，換下一個來源試試
+                _zh_ner_pipeline = None
+                _zh_errors.append(f"{_label}：{e}")
+        else:
+            MODEL_STATUS.append("[停用] 中文 NER 模型載入失敗，中文只用正則規則 -> " + "；".join(_zh_errors))
 
 
 def zh_ner(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:

@@ -25,6 +25,7 @@ import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
+import app_env  # 必須最先 import：打包成 EXE 時的工作目錄 / 模型資料夾 / 離線設定，要在載入模型的 core 之前完成
 import core
 import entity_store
 import hotkey_service
@@ -616,8 +617,9 @@ class App(tk.Tk):
         ttk.Label(bar, textvariable=self.svc_state).pack(side="left", padx=8)
 
         tip = ("說明：\n"
-               "• 模式 A：貼上欄有值。複製只產生覆蓋結果，按貼上快速鍵才會貼出去。若設成 Ctrl+C / Ctrl+V，原生複製貼上會被本程式取代；\n"
-               "  設成其他組合 (例如 Ctrl+Alt+C / Ctrl+Alt+V) 則原生 Ctrl+C / Ctrl+V 不受影響。\n"
+               "• 模式 A：貼上欄有值。複製只產生覆蓋結果，按貼上快速鍵才會貼出去，原生 Ctrl+C / Ctrl+V 不受影響 (例如 Ctrl+Alt+C / Ctrl+Alt+V)。\n"
+               "• 模式 A 且設成 Ctrl+C / Ctrl+V：原生複製貼上會被取代，並監聽剪貼簿——右鍵複製、網頁複製鈕、Ctrl+X 也會處理；\n"
+               "  複製後剪貼簿就會是處理後的內容 (不保留原文)，所以右鍵貼上貼出的也是處理後的內容。\n"
                "• 模式 B：貼上欄清空，複製鍵通常設成 Ctrl+C。複製時直接覆寫剪貼簿，之後用原生 Ctrl+V 貼上；"
                "處理完成前就貼上會貼出原始內容。\n"
                "• 設定存在 hotkeys.json，命令列的 main.py 啟動時也會讀取同一份設定。\n"
@@ -841,6 +843,7 @@ class App(tk.Tk):
         text = self.txt_out.get("1.0", "end-1c")
         if text:
             core.copy_text_to_clipboard(text)
+            self.service.ignore_clipboard_change()   # 這是程式自己寫的，剪貼簿監聽不要當成使用者的複製再處理
             print("[完成] 結果已複製到剪貼簿")
 
     def result_to_input(self):
@@ -918,6 +921,7 @@ class App(tk.Tk):
             messagebox.showinfo("提示", "沒有可複製的輸出檔案")
             return
         core.copy_files_to_clipboard(paths)
+        self.service.ignore_clipboard_change()
         print(f"[完成] 已把 {len(paths)} 個輸出檔案複製到剪貼簿，可直接在檔案總管貼上")
 
     def open_output_folder(self):

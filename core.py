@@ -683,6 +683,8 @@ def warmup():
     for msg in errors:
         print(msg)
     print(f"[預熱] 完成，耗時 {time.time() - t0:.1f} 秒")
+    for line in getattr(handler_text, "MODEL_STATUS", []):   # 哪些模型啟用/停用 (停用 = 該偵測功能沒有作用)
+        print(line)
 
 
 # ---------- 圖片 / PDF：OCR 文字送模型前也做前處理 ----------

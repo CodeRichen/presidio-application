@@ -18,32 +18,26 @@ hotkey_service.py - 全域快速鍵服務 (main.py 與 ui.py 共用)
   (結果就是貼上兩次，或貼出原始未遮蔽的內容)。這種設定下改用低階鍵盤 hook 自己比對按鍵：
     - 使用者實體按下的 Ctrl+C / Ctrl+V 會被吞掉，應用程式收不到，由本服務取代。
     - 本服務自己模擬出來的按鍵 (帶有 injected 旗標) 一律放行，不會觸發自己，也不會被吞掉。
-    - 貼上時一律以「覆蓋結果」為準：
-        1. 複製的是一般內容 -> 貼出遮蔽後 (帶標籤) 的內容
-        2. 複製的是帶標籤的內容 -> 貼出還原後的內容
-        3. 沒有需要處理的內容 -> 才原樣貼上
-    - 如果剪貼簿在複製之後被別的方式改動過 (網頁的「複製」按鈕、右鍵複製、Ctrl+X...)，
-      貼上時會以目前剪貼簿內容重新處理一次，避免貼出過期的結果或原始敏感內容。
+    - 複製的結果直接寫回剪貼簿：
+        1. 複製的是一般內容 -> 剪貼簿變成遮蔽後 (帶標籤) 的內容
+        2. 複製的是帶標籤的內容 -> 剪貼簿變成還原後的內容
+        3. 沒有需要處理的內容 -> 剪貼簿維持原樣
+    - 右鍵選單的「複製 / 貼上」是應用程式自己處理的，沒辦法攔截；所以改成「監聽剪貼簿」：
+      不是由快速鍵觸發的複製 (右鍵複製、網頁的複製按鈕、Ctrl+X...) 只要剪貼簿內容變了，
+      就用同樣的規則處理並寫回剪貼簿。剪貼簿裡永遠是處理後的內容，
+      所以不論用 Ctrl+V、右鍵貼上或其他貼上方式，貼出的都是處理後的內容。
+    - 快速鍵貼上時，若剪貼簿還沒處理過 (複製剛發生、監聽尚未追上，或程式剛啟動)，會先處理再貼上。
+    - 取捨：這個設定下剪貼簿不會保留原文 (原文可從對照表還原)。
+    - 程式啟動當下剪貼簿裡已有的內容，監聽不會主動改寫；但第一次按貼上快速鍵時會先處理。
   其他快速鍵設定 (例如 <ctrl>+<alt>+c / <ctrl>+<alt>+v) 維持原本 GlobalHotKeys 的行為，不受影響。
   需求：pynput >= 1.7 (win32_event_filter)。
-
-【右鍵選單的複製 / 貼上】(只在「取代原生 Ctrl+C / Ctrl+V」模式啟用)
-  右鍵選單裡的「複製」「貼上」是應用程式自己處理的，無法像快速鍵一樣直接攔截，所以用「暫時換內容」的方式處理：
-    - 右鍵按下 (或按選單鍵 / Shift+F10) 時：若有覆蓋結果，先把它暫時寫進剪貼簿 (稱為「暫放」)。
-      使用者在選單按「貼上」，應用程式讀到的就是覆蓋結果。
-    - 選單操作結束 (下一次滑鼠點擊 / Enter / Esc / 按任意字母鍵) 後，稍等一下：
-        * 剪貼簿沒被動過 -> 還原成原始內容 (跟快速鍵貼上一樣，貼完就還原)。
-        * 剪貼簿被動過 (使用者按了選單的「複製」或「剪下」) -> 以新的剪貼簿內容重新算出覆蓋結果，
-          之後不管用 Ctrl+V 還是右鍵貼上，都會貼出處理後的版本。
-    - 暫放期間若又按了 Ctrl+C / Ctrl+V，會先還原剪貼簿再處理，不會把覆蓋結果當成原始內容再處理一次。
-  限制：滑鼠 hook 只能「看到點擊」，看不到點的是哪個選單項目，所以是靠剪貼簿有沒有變動來判斷。
-        模式 B (paste 為空) 剪貼簿本來就已被覆寫，右鍵貼上天然就是處理後版本，不需要這個機制。
 
 ui.py 可以在執行中更改快速鍵：save_config() 後呼叫 service.start(新設定) 即重新綁定。
 main.py 啟動時讀取 hotkeys.json (沒有檔案就用預設值)。
 """
 import os
 import re
+import sys
 import json
 import time
 import threading
@@ -51,11 +45,14 @@ from importlib import metadata
 
 import win32api
 import win32con
-from pynput import keyboard, mouse
+from pynput import keyboard
 
 import core
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hotkeys.json")
+# 打包成單一 EXE 後 __file__ 會指到執行時解壓縮的暫存資料夾 (關掉就刪除)，設定檔要放在 EXE 旁邊才存得住
+APP_DIR = (os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False)
+           else os.path.dirname(os.path.abspath(__file__)))
+CONFIG_FILE = os.path.join(APP_DIR, "hotkeys.json")
 DEFAULT_CONFIG = {"copy": "<ctrl>+c", "paste": "<ctrl>+v"}
 
 # 處理剪貼簿 / 對照表的工作一律序列化 (快速鍵與 ui 的背景工作共用)，避免同時改 mapping 或搶剪貼簿
@@ -63,23 +60,13 @@ WORK_LOCK = threading.RLock()
 
 PASTE_SETTLE_DELAY = 0.05     # 把覆蓋結果寫進剪貼簿後，等多久再送出貼上
 PASTE_RESTORE_DELAY = 0.25    # 送出貼上後，等多久才把剪貼簿還原 (太早還原，反應慢的程式會貼到原始內容)
+CLIPBOARD_POLL_INTERVAL = 0.3 # 取代原生 Ctrl+C/V 模式：多久檢查一次剪貼簿有沒有被「快速鍵以外」的方式改動
+CLIPBOARD_SETTLE_DELAY = 0.2  # 偵測到變動後，等剪貼簿序號穩定這麼久才處理 (有些程式複製時會連續寫好幾次)
 
-CONTEXT_RESTORE_DELAY = 0.6   # 右鍵選單操作結束後，等多久才還原 / 重算剪貼簿 (選單項目是在放開滑鼠時才執行)
-CONTEXT_MAX_SECONDS = 60      # 右鍵暫放最長維持多久；萬一沒偵測到選單結束，時間到也會強制結束
-
-# Windows 低階鍵盤 / 滑鼠 hook 的訊息常數
+# Windows 低階鍵盤 hook 的訊息常數
 WM_KEYDOWN, WM_KEYUP = 0x0100, 0x0101
 WM_SYSKEYDOWN, WM_SYSKEYUP = 0x0104, 0x0105
-WM_LBUTTONDOWN, WM_RBUTTONDOWN = 0x0201, 0x0204
-WM_MBUTTONDOWN, WM_XBUTTONDOWN = 0x0207, 0x020B
 LLKHF_INJECTED = 0x10         # 這個按鍵事件是程式模擬出來的 (keybd_event / SendInput)
-LLMHF_INJECTED = 0x01         # 這個滑鼠事件是程式模擬出來的
-
-VK_APPS = 0x5D                # 鍵盤上的「選單鍵」
-VK_F10 = 0x79
-# 開著選單時用來導覽的按鍵 (修飾鍵、方向鍵、Tab)：按了不代表選單操作結束
-_MENU_NAV_VKS = {0x09, 0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C,
-                 0x25, 0x26, 0x27, 0x28}
 
 
 # ---------------- 快速鍵字串解析 (只有「取代原生 Ctrl+C / Ctrl+V」模式會用到) ----------------
@@ -235,19 +222,19 @@ class HotkeyService:
         self.mapping = mapping
         self.config = dict(config) if config else load_config()
         self._listener = None
-        self._mouse_listener = None
         self._direct = not self.config.get("paste")
 
         self._override = {"kind": None, "content": None, "original": None, "seq": None}   # 模式 A 暫存
         self._last_copy = {"kind": None, "original": None, "masked": None}                # 模式 B 紀錄
 
-        # 右鍵選單 (取代原生 Ctrl+C/V 模式)
-        self._ctx_active = False     # 目前是否在「右鍵選單期間」
-        self._ctx_token = 0          # 每開一次選單加 1，用來讓過期的背景工作自己放棄
-        self._staged = None          # 暫放在剪貼簿裡的覆蓋結果 (結束時要還原)
-
         self._state_lock = threading.Lock()
         self._running = {"copy": False, "paste": False}
+
+        # 取代原生 Ctrl+C/V 模式用：剪貼簿監聽
+        self._replace_native = False
+        self._handled_seq = None     # 已經處理過 (或程式自己寫入) 的剪貼簿序號；不等於目前序號 = 還沒處理
+        self._baseline_seq = None    # 監聽啟動當下的序號，監聽不主動改寫它
+        self._monitor_stop = None
 
     # ---------------- 狀態 ----------------
     @property
@@ -261,9 +248,7 @@ class HotkeyService:
     def _reset_state(self):
         self._override = {"kind": None, "content": None, "original": None, "seq": None}
         self._last_copy = {"kind": None, "original": None, "masked": None}
-        self._staged = None
-        self._ctx_active = False
-        self._ctx_token += 1
+        self._handled_seq = None
 
     # ---------------- 啟動 / 停止 ----------------
     def start(self, config=None):
@@ -296,11 +281,9 @@ class HotkeyService:
 
         listener.start()
         self._listener = listener
-
+        self._replace_native = replace_native
         if replace_native:
-            # 右鍵選單的複製 / 貼上：另外監聽滑鼠點擊 (只觀察，不攔截)
-            self._mouse_listener = self._build_mouse_listener()
-            self._mouse_listener.start()
+            self._start_monitor()
 
         print("【監聽啟動】" + ("(模式 B：Ctrl+C 直接模式)" if self._direct else "(模式 A：專屬快速鍵)"))
         if self._direct:
@@ -309,28 +292,19 @@ class HotkeyService:
         else:
             suppressed = {b["name"] for b in bindings if b["suppress"]}
             copy_note = "  [原生複製已被取代]" if "copy" in suppressed else ""
-            paste_note = "  [原生貼上已被取代；沒有覆蓋結果時才原樣貼上]" if "paste" in suppressed else ""
-            print(f"  - {self.config['copy']} : 有標籤就還原、沒標籤就遮蔽（只產生覆蓋結果）{copy_note}")
-            print(f"  - {self.config['paste']} : 貼上覆蓋結果，貼完還原剪貼簿{paste_note}")
-            if "paste" not in suppressed:
-                print("  - Ctrl+V : 系統原生貼上，不受影響")
+            paste_note = "  [原生貼上已被取代]" if "paste" in suppressed else ""
             if replace_native:
-                print("  - 右鍵選單的複製 / 貼上 : 已監聽 (右鍵時暫放覆蓋結果，選單結束後還原)")
+                print(f"  - {self.config['copy']} : 複製後有標籤就還原、沒標籤就遮蔽，並把結果寫回剪貼簿{copy_note}")
+                print(f"  - {self.config['paste']} : 貼上 (貼上前若剪貼簿還沒處理過會先處理){paste_note}")
+                print(f"  - 右鍵複製 / 右鍵貼上 / 網頁複製鈕 / Ctrl+X : 由剪貼簿監聽處理 "
+                      f"(每 {CLIPBOARD_POLL_INTERVAL} 秒檢查一次)，複製完成後剪貼簿就是處理後的內容")
+            else:
+                print(f"  - {self.config['copy']} : 有標籤就還原、沒標籤就遮蔽（只產生覆蓋結果）{copy_note}")
+                print(f"  - {self.config['paste']} : 貼上覆蓋結果，貼完還原剪貼簿{paste_note}")
+                print("  - Ctrl+V : 系統原生貼上，不受影響")
 
     def stop(self):
-        if self._mouse_listener is not None:
-            try:
-                self._mouse_listener.stop()
-            except Exception:
-                pass
-            self._mouse_listener = None
-        self._ctx_active = False
-        self._ctx_token += 1
-        with WORK_LOCK:
-            try:
-                self._unstage()          # 還有暫放在剪貼簿的覆蓋結果就先還原，避免停止後剪貼簿留著處理後的內容
-            except Exception as e:
-                print(f"[警告] 停止時還原剪貼簿失敗：{e}")
+        self._stop_monitor()
         if self._listener is not None:
             try:
                 self._listener.stop()
@@ -389,13 +363,6 @@ class HotkeyService:
                         suppress = b_sup
                     else:
                         held.pop(vk, None)            # 不是我們的組合 (例如單獨按 V)：清掉殘留狀態並放行
-                        # 右鍵選單期間按了「選單導覽以外」的鍵 (Enter / Esc / 選單底線字母...)：選單操作結束
-                        if self._ctx_active and vk not in _MENU_NAV_VKS:
-                            self._ctx_end()
-                        # 鍵盤叫出右鍵選單：選單鍵 或 Shift+F10
-                        if vk == VK_APPS or (vk == VK_F10 and _current_modifiers() == frozenset({"shift"})):
-                            if not self._ctx_active:
-                                self._ctx_start()
                 elif msg in (WM_KEYUP, WM_SYSKEYUP):
                     if vk in held:
                         suppress = held.pop(vk)
@@ -408,112 +375,6 @@ class HotkeyService:
 
         listener = keyboard.Listener(win32_event_filter=event_filter)
         return listener
-
-    def _build_mouse_listener(self):
-        """低階滑鼠 hook：只觀察點擊，從不攔截。
-        右鍵按下 = 右鍵選單開始；之後下一次任何滑鼠按下 = 使用者點了選單項目 (或點空白處關掉選單)。"""
-        def event_filter(msg, data):
-            try:
-                if data.flags & LLMHF_INJECTED:
-                    return False
-                if msg in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_XBUTTONDOWN):
-                    if self._ctx_active:
-                        self._ctx_end()
-                    if msg == WM_RBUTTONDOWN:
-                        self._ctx_start()
-            except Exception as e:
-                print(f"[錯誤] 滑鼠事件處理失敗：{e}")
-            return False                              # 不吞掉任何滑鼠事件，也不需要 on_click
-
-        return mouse.Listener(win32_event_filter=event_filter)
-
-    # ---------------- 右鍵選單 (暫放 / 還原) ----------------
-    # 這三個 _ctx_* 會在 hook 執行緒被呼叫，所以只改旗標、馬上把實際工作丟到背景執行緒，hook 不能被卡住。
-    def _ctx_start(self):
-        self._ctx_token += 1
-        token = self._ctx_token
-        self._ctx_active = True
-        threading.Thread(target=self._ctx_begin_job, args=(token,), daemon=True).start()
-        threading.Thread(target=self._ctx_timeout_job, args=(token,), daemon=True).start()
-
-    def _ctx_end(self):
-        if not self._ctx_active:
-            return
-        self._ctx_active = False
-        threading.Thread(target=self._ctx_finish_job, args=(self._ctx_token,), daemon=True).start()
-
-    def _ctx_timeout_job(self, token):
-        time.sleep(CONTEXT_MAX_SECONDS)
-        if token == self._ctx_token and self._ctx_active:
-            self._ctx_end()
-
-    def _ctx_begin_job(self, token):
-        """右鍵按下：把覆蓋結果暫放進剪貼簿，讓選單的「貼上」貼到處理後的內容"""
-        try:
-            with WORK_LOCK:
-                if token != self._ctx_token:
-                    return
-                self._unstage()                         # 上一次還沒還原的先還原
-                ov = self._override
-                if ov.get("seq") != core.clipboard_seq():
-                    # 還沒複製過，或剪貼簿在那之後被別的方式改過 -> 以目前剪貼簿重新算
-                    self._recompute_from_clipboard()
-                    ov = self._override
-                if ov["kind"] not in ("text", "files"):
-                    return                              # 沒有需要處理的內容：什麼都不動，選單照原樣貼上
-                if ov["kind"] == "text":
-                    core.copy_text_to_clipboard(ov["content"])
-                else:
-                    core.copy_files_to_clipboard(ov["content"])
-                self._staged = {"ov": ov, "kind": ov["kind"], "seq": core.clipboard_seq(), "token": token}
-                print("[右鍵選單] 已暫放覆蓋結果到剪貼簿，選單結束後會還原")
-        except Exception as e:
-            print(f"[錯誤] 右鍵選單暫放失敗：{e}")
-
-    def _ctx_finish_job(self, token):
-        """選單操作結束：等選單項目執行完，再還原剪貼簿 (沒被動過) 或重算覆蓋結果 (被複製/剪下動過)"""
-        time.sleep(CONTEXT_RESTORE_DELAY)
-        try:
-            with WORK_LOCK:
-                if token != self._ctx_token:
-                    return                              # 已經又開了新的選單，交給新的那一輪處理
-                st = self._staged
-                if st and st["token"] == token:
-                    self._unstage(recompute=True)
-                elif st is None and self._override.get("seq") != core.clipboard_seq():
-                    # 沒有暫放 (原本沒有覆蓋結果)，但剪貼簿變了 -> 使用者按了選單的複製 / 剪下
-                    print("[右鍵選單] 偵測到剪貼簿變動 (複製/剪下)，重新處理")
-                    self._recompute_from_clipboard()
-        except Exception as e:
-            print(f"[錯誤] 右鍵選單結束處理失敗：{e}")
-
-    def _recompute_from_clipboard(self):
-        content_type, content = core.get_clipboard_content()
-        self._override = self._compute_override(content_type, content)
-        if self._override["kind"]:
-            print("[就緒] 覆蓋結果已更新")
-        else:
-            print("[結果] 未偵測到需要遮蔽的內容")
-
-    def _unstage(self, recompute=False):
-        """把暫放在剪貼簿的覆蓋結果收回來。呼叫時必須已持有 WORK_LOCK。
-        - 剪貼簿沒被動過 -> 還原成原始內容
-        - 剪貼簿被動過 (選單的複製/剪下、其他程式) -> 不能蓋掉使用者新複製的東西；recompute=True 時以新內容重算"""
-        st = self._staged
-        if not st:
-            return
-        self._staged = None
-        ov = st["ov"]
-        if core.clipboard_seq() == st["seq"]:
-            if st["kind"] == "text":
-                core.copy_text_to_clipboard(ov["original"])
-            else:
-                core.copy_files_to_clipboard(ov["original"])
-            ov["seq"] = core.clipboard_seq()            # 我們自己寫剪貼簿不算「被改動」，同一份結果可繼續貼
-            print("[右鍵選單] 剪貼簿已還原")
-        elif recompute:
-            print("[右鍵選單] 偵測到剪貼簿變動 (複製/剪下)，重新處理")
-            self._recompute_from_clipboard()
 
     # ---------------- callback 包裝 ----------------
     def _guarded(self, name, func, allow_queue=False):
@@ -542,6 +403,83 @@ class HotkeyService:
             threading.Thread(target=run, daemon=True).start()
         return wrapper
 
+    # ---------------- 剪貼簿監聽 (取代原生 Ctrl+C/V 模式) ----------------
+    def ignore_clipboard_change(self):
+        """程式自己 (例如 ui.py 的「結果複製到剪貼簿」) 剛寫了剪貼簿時呼叫，
+        告訴監聽這不是使用者的複製，不要再處理一次 (否則帶標籤的結果會被當成要還原)。"""
+        self._handled_seq = core.clipboard_seq()
+
+    def _process_clipboard_in_place(self):
+        """讀目前剪貼簿 -> 遮蔽/還原 -> 把結果寫回剪貼簿。回傳 "text" / "files" / None (沒有需要處理的內容)。
+        呼叫者必須已持有 WORK_LOCK。處理完會記下剪貼簿序號，之後的監聽與貼上就不會再處理同一份內容。"""
+        content_type, content = core.get_clipboard_content()
+        ov = self._compute_override(content_type, content)
+        if ov["kind"] == "text":
+            core.copy_text_to_clipboard(ov["content"])
+        elif ov["kind"] == "files":
+            core.copy_files_to_clipboard(ov["content"])
+        self._handled_seq = core.clipboard_seq()
+        return ov["kind"]
+
+    @staticmethod
+    def _print_in_place_result(kind):
+        if kind:
+            print("[完成] 剪貼簿已改寫成處理後的內容；之後不論 Ctrl+V、右鍵貼上或其他貼上方式，貼出的都是處理後的內容")
+        else:
+            print("[結果] 未偵測到需要遮蔽 / 還原的內容，剪貼簿維持原樣")
+
+    def _start_monitor(self):
+        self._baseline_seq = core.clipboard_seq()
+        stop = threading.Event()
+        self._monitor_stop = stop
+        threading.Thread(target=self._monitor_loop, args=(stop,), daemon=True).start()
+
+    def _stop_monitor(self):
+        if self._monitor_stop is not None:
+            self._monitor_stop.set()
+            self._monitor_stop = None
+
+    def _monitor_loop(self, stop):
+        """定期檢查剪貼簿序號。序號變了、而且不是快速鍵流程 / 程式自己寫的 (handled)，
+        就視為使用者用右鍵複製、網頁複製鈕、Ctrl+X 等方式複製，照同樣規則處理並寫回剪貼簿。"""
+        while not stop.wait(CLIPBOARD_POLL_INTERVAL):
+            try:
+                if core.clipboard_seq() in (self._handled_seq, self._baseline_seq):
+                    continue
+                seq = core.clipboard_seq()
+                while not stop.wait(CLIPBOARD_SETTLE_DELAY):      # 等序號穩定 (有些程式複製時會連寫好幾次)
+                    now = core.clipboard_seq()
+                    if now == seq:
+                        break
+                    seq = now
+                if stop.is_set():
+                    return
+                with WORK_LOCK:                                   # 等快速鍵 / ui 正在做的工作做完
+                    if stop.is_set():
+                        return
+                    if core.clipboard_seq() in (self._handled_seq, self._baseline_seq):
+                        continue                                  # 等鎖的期間已被處理掉
+                    self._process_external_copy()
+            except Exception as e:
+                print(f"[錯誤] 剪貼簿監聽失敗：{e}")
+
+    def _process_external_copy(self):
+        print("\n" + "=" * 50)
+        print("【偵測到剪貼簿變動 (右鍵複製 / 網頁複製鈕 / 剪下 ...)】")
+        title, proc = core.get_active_window_info()
+        print(f"來源程式: {proc} | 視窗標題: {title}")
+        for attempt in range(3):                                  # 剪貼簿偶爾被別的程式鎖住，重試幾次
+            try:
+                self._print_in_place_result(self._process_clipboard_in_place())
+                break
+            except Exception as e:
+                if attempt == 2:
+                    print(f"[錯誤] 處理剪貼簿失敗，這次不處理：{e}")
+                    self._handled_seq = core.clipboard_seq()     # 避免每 0.3 秒重複失敗洗版
+                else:
+                    time.sleep(0.2)
+        print("=" * 50)
+
     # ---------------- 覆蓋結果 ----------------
     def _compute_override(self, content_type, content):
         """依目前剪貼簿內容算出覆蓋結果。回傳的 dict 一律帶 seq (算完當下的剪貼簿序號)，
@@ -566,12 +504,24 @@ class HotkeyService:
         print("\n" + "=" * 50)
         print("【偵測到 Ctrl+C】" if direct else "【偵測到複製快速鍵】")
 
-        self._unstage()   # 右鍵選單暫放中的覆蓋結果先還原，否則會把它當成「原始內容」再處理一次
-
         seq = core.clipboard_seq()
         if not direct:
             send_key_combination(ord('C'))  # 模式 A：自己模擬一次複製 (實體按鍵若是 Ctrl+C 已被吞掉，所以只會複製一次)
-        if not core.wait_clipboard_change(seq, timeout=1.0):
+        changed = core.wait_clipboard_change(seq, timeout=1.0)
+
+        if self._replace_native:
+            # 取代原生複製：只處理「真的複製成功」的內容。沒變化 (沒選取東西) 時不能處理，
+            # 否則會把剪貼簿裡已處理好的內容再處理一次 (帶標籤的內容會被還原)
+            if not changed:
+                print("[提示] 剪貼簿沒有變化 (沒有選取內容或複製失敗)，不處理，剪貼簿維持原樣")
+            else:
+                title, proc = core.get_active_window_info()
+                print(f"來源程式: {proc} | 視窗標題: {title}")
+                self._print_in_place_result(self._process_clipboard_in_place())
+            print("=" * 50)
+            return
+
+        if not changed:
             print("[提示] 剪貼簿沒有變化 (可能複製了相同內容，或原生複製已先完成)，以目前剪貼簿內容處理")
 
         title, proc = core.get_active_window_info()
@@ -619,7 +569,15 @@ class HotkeyService:
         print("【偵測到貼上快速鍵】")
         title, proc = core.get_active_window_info()
 
-        self._unstage()   # 右鍵選單暫放中的覆蓋結果先還原 (同時把 ov["seq"] 更新回來，下面就不會誤判成過期)
+        if self._replace_native:
+            # 剪貼簿裡本來就應該是處理後的內容；若還沒處理過 (複製剛發生、監聽還沒追上、程式剛啟動) 先處理再貼
+            if core.clipboard_seq() != self._handled_seq:
+                print("[提示] 剪貼簿內容還沒處理過，貼上前先處理")
+                self._print_in_place_result(self._process_clipboard_in_place())
+            send_key_combination(ord('V'))
+            print(f"[完成] 已貼上剪貼簿內容給 {proc} | {title}")
+            print("=" * 50)
+            return
 
         ov = self._override
         if ov.get("seq") != core.clipboard_seq():

@@ -15,14 +15,22 @@ Tesseract OCR 238M
 4頁pdf 
 
 使用模型:
-文字辨識模型:
-
+影像辨識模型:
+Tesseract OCR
 文字處理模型:
 英文 NER (Presidio)	spaCy en_core_web_sm	models\en_core_web_sm\
 中文 NER	uer/roberta-base-finetuned-cluener2020-chinese (約 400 MB)	models\zh_ner\
 
 測試模型:
-文字辨識模型:
-Tesseract OCR
+影像辨識模型:
+
 文字處理模型:
 Qwen、Llama、Gemma、Mistral、Falcon、Phi 
+中研院 CKIP Lab 的中文 NER 模型
+
+未測試模型:
+文字處理模型:
+ZJUICSR/AIguard-pii-detection-fast
+OpenMed/OpenMed-PII-Chinese-ModernMed-Large-395M-v1
+影像辨識模型:
+PaddleOCR
