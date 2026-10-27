@@ -7,7 +7,7 @@
 
 ![專案操作示範](report/demo.gif)
 
-<img alt="Demo Animation" src="report/PII偵測與假名化系統.png" width="200">
+<img src="report/PII偵測與假名化系統.png" width="400" alt="Demo Animation">
 
 
 
@@ -56,7 +56,9 @@ python -m spacy download en_core_web_sm
 
 ## 整體流程
 
-![使用流程](report/使用流程.png)
+
+
+<img src="report/使用流程.png" width="400" alt="Demo Animation">
 
 ### 文字前處理（送模型前）
 
