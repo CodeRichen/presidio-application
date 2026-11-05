@@ -491,7 +491,7 @@ class HotkeyService:
             if out_paths:
                 return {"kind": "files", "content": out_paths, "original": content, "seq": core.clipboard_seq()}
         else:
-            result = core.process_text(content, mapping, action="auto")
+            result = core.process_text(content, mapping, action="mask")
             if result:
                 return {"kind": "text", "content": result, "original": content, "seq": core.clipboard_seq()}
         return {"kind": None, "content": None, "original": None, "seq": core.clipboard_seq()}
@@ -553,7 +553,7 @@ class HotkeyService:
                 self._reset_state()
                 print("[結果] 未偵測到需要遮蔽的內容，剪貼簿維持原樣")
         else:
-            result = core.process_text(content, mapping, action="auto")
+            result = core.process_text(content, mapping, action="mask")
             if result:
                 core.copy_text_to_clipboard(result)
                 self._last_copy = {"kind": "text", "original": content, "masked": result}

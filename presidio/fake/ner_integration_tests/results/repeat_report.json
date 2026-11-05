@@ -1,0 +1,152 @@
+{
+  "chars": 108,
+  "mode": "text",
+  "targets": [
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 15,
+      "end": 18,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 42,
+      "end": 45,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 60,
+      "end": 63,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 73,
+      "end": 76,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 100,
+      "end": 103,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "陳雅婷",
+      "label": "PERSON",
+      "start": 37,
+      "end": 40,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "陳雅婷",
+      "label": "PERSON",
+      "start": 68,
+      "end": 71,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "陳雅婷",
+      "label": "PERSON",
+      "start": 89,
+      "end": 92,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    }
+  ],
+  "restoration_exact": true,
+  "still_visible_target_values": [],
+  "final_person_spans": [
+    {
+      "start": 15,
+      "end": 18,
+      "text": "林家宇",
+      "source": "regex"
+    },
+    {
+      "start": 37,
+      "end": 40,
+      "text": "陳雅婷",
+      "source": "regex"
+    },
+    {
+      "start": 42,
+      "end": 45,
+      "text": "林家宇",
+      "source": "regex"
+    },
+    {
+      "start": 60,
+      "end": 63,
+      "text": "林家宇",
+      "source": "regex"
+    },
+    {
+      "start": 68,
+      "end": 71,
+      "text": "陳雅婷",
+      "source": "regex"
+    },
+    {
+      "start": 73,
+      "end": 76,
+      "text": "林家宇",
+      "source": "regex"
+    },
+    {
+      "start": 89,
+      "end": 92,
+      "text": "陳雅婷",
+      "source": "regex"
+    },
+    {
+      "start": 96,
+      "end": 98,
+      "text": "祝順",
+      "source": "zh"
+    },
+    {
+      "start": 100,
+      "end": 103,
+      "text": "林家宇",
+      "source": "regex"
+    }
+  ]
+}

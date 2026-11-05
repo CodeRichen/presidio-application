@@ -1,0 +1,21 @@
+{
+  "chars": 132,
+  "mode": "text",
+  "targets": [],
+  "restoration_exact": true,
+  "still_visible_target_values": [],
+  "final_person_spans": [
+    {
+      "start": 54,
+      "end": 57,
+      "text": "王小明",
+      "source": "regex"
+    },
+    {
+      "start": 88,
+      "end": 89,
+      "text": "林",
+      "source": "zh"
+    }
+  ]
+}
