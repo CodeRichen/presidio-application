@@ -1,0 +1,8 @@
+Team NER benchmark: CLUENER(A) vs A+C+Repeat+C Token Chunking
+Dataset: tw_pii_mid_private_person.jsonl | Cases: 300 | Gold: 516
+Scoring: exact private_person [start,end) offsets; development data, not blind holdout
+NER  A   : TP=470 FP=199 FN=46 P=0.7025 R=0.9109 F1=0.7932 full-span=471
+NER AC   : TP=487 FP=351 FN=29 P=0.5811 R=0.9438 F1=0.7194 full-span=488
+NER changed cases: 106
+Elapsed: 439.6s
+No labels/lists/maps were modified.

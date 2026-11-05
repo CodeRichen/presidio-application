@@ -1,0 +1,4 @@
+【純文字：短文本】
+聯絡人<PERSON_1>已完成資料確認，電話是 <TW_PHONE_1>，Email 是 <EMAIL_1>。
+申請人<PERSON_3>已完成登記，後續事項由<PERSON_2>協助。
+客戶<PERSON_1>再次確認資料無誤，最後由<PERSON_1>敬上。
