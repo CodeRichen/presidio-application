@@ -1,0 +1,6 @@
+【中英混合：Presidio + A+C】
+The contact person is John Smith, and the project manager is Emily Chen.
+Their demo email address is john.smith@example.com.
+中文窗口為陳雅婷，備用聯絡人是林家宇。
+聯絡電話 0988-123-456，其他測試用信箱是 qa@example.com。
+請勿把這些資料當成真實人物資訊。

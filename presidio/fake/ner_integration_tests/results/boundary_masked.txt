@@ -1,0 +1,7 @@
+【人名與職稱邊界測試：用來觀察誤判，非必須全部通過】
+收件者：<PERSON_6>先生。請<PERSON_6>先生確認預約時間。
+<PERSON_5>姐妳好，明天的會議資料已寄出。
+<POSITION_3><PERSON_2>已確認所有項目。
+<POSITION_2><PERSON_4>完成最終檢查，<POSITION_1><PERSON_3>已覆核。
+通知：<PERSON_2>有限公司將於明天寄出收據。
+謝謝，<PERSON_1> 敬上。

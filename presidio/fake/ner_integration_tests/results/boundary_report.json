@@ -1,0 +1,113 @@
+{
+  "chars": 134,
+  "mode": "text",
+  "targets": [
+    {
+      "text": "王小明",
+      "label": "PERSON",
+      "start": 68,
+      "end": 71,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "王小明",
+      "label": "PERSON",
+      "start": 106,
+      "end": 109,
+      "handler_exact": false,
+      "handler_overlap": false,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "郭怡萱",
+      "label": "PERSON",
+      "start": 83,
+      "end": 86,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "陳雅婷",
+      "label": "PERSON",
+      "start": 95,
+      "end": 98,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 126,
+      "end": 129,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    }
+  ],
+  "restoration_exact": true,
+  "still_visible_target_values": [],
+  "final_person_spans": [
+    {
+      "start": 31,
+      "end": 32,
+      "text": "林",
+      "source": "zh"
+    },
+    {
+      "start": 36,
+      "end": 37,
+      "text": "林",
+      "source": "zh"
+    },
+    {
+      "start": 47,
+      "end": 49,
+      "text": "雅婷",
+      "source": "zh"
+    },
+    {
+      "start": 68,
+      "end": 71,
+      "text": "王小明",
+      "source": "regex"
+    },
+    {
+      "start": 83,
+      "end": 86,
+      "text": "郭怡萱",
+      "source": "regex"
+    },
+    {
+      "start": 95,
+      "end": 98,
+      "text": "陳雅婷",
+      "source": "regex"
+    },
+    {
+      "start": 106,
+      "end": 109,
+      "text": "王小明",
+      "source": "regex"
+    },
+    {
+      "start": 126,
+      "end": 129,
+      "text": "林家宇",
+      "source": "regex"
+    }
+  ]
+}

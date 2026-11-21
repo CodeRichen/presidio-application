@@ -1,0 +1,6 @@
+【中英混合：Presidio + A+C】
+The contact person is <PERSON_4>, and the project manager is <PERSON_3>.
+Their demo email address is <EMAIL_2>.
+中文窗口為<PERSON_2>，備用聯絡人是<PERSON_1>。
+聯絡電話 <TW_PHONE_1>，其他測試用信箱是 <EMAIL_1>。
+請勿把這些資料當成真實人物資訊。

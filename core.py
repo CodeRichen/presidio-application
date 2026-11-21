@@ -239,7 +239,14 @@ def _anonymize_full(text, mapping, is_code, save, record, source):
         if m:
             t, i = m.groups()
             counters[t] = max(counters.get(t, 0), int(i))
-
+    # 預留原文中已存在的標籤編號
+    # 即使 mapping 是空的，也不能重複使用 <PERSON_1>
+    for m in TAG_RE.finditer(text):
+        entity_type, number = m.groups()
+        counters[entity_type] = max(
+            counters.get(entity_type, 0),
+            int(number)
+        )
     out = text
     for start, end, etype, score, src in sorted(matches, key=lambda m: m[0], reverse=True):
         val = text[start:end]

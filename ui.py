@@ -3,7 +3,7 @@ ui.py - 剪貼簿敏感資訊防護 圖形介面 (tkinter，不需額外安裝)
 ====================================================
 與 main.py 互相獨立，只 import core.py / entity_store.py / hotkey_service.py。
 分頁：
-  - 文字      貼上/輸入文字，內容類型二選一 (程式 / 一般文字) 後按「判斷」：有標籤就還原、沒標籤就遮蔽。
+  - 文字      貼上/輸入文字，選擇「遮蔽」或「還原」後按「判斷」；無變化時依情況提示使用者。
               判斷完輸入框會清空，結果接在結果框原有內容後面 (結果不會被清掉，要清再按「清空」)。
               送模型前統一先做前處理 (全形轉半形、隱形字元、網頁標籤、簡繁、空白)，
               可開關，也能「預覽前處理」看每一步改了什麼；遮蔽只動被偵測到的那一段，原文其餘部分不變
@@ -31,6 +31,11 @@ import entity_store
 import hotkey_service
 import preprocess
 
+# UI 啟動時預設使用 AC + Chunk
+os.environ.setdefault("PII_NER_BACKEND", "ac")
+os.environ.setdefault("PII_C_LONG_MODE", "chunk")
+
+
 # ---------- 快速鍵錄製：Tk 按鍵事件 -> pynput 格式 ----------
 _MODIFIER_KEYSYMS = {"Control_L", "Control_R", "Alt_L", "Alt_R", "Shift_L", "Shift_R",
                      "Win_L", "Win_R", "Super_L", "Super_R", "Meta_L", "Meta_R",
@@ -46,6 +51,52 @@ KIND_TEXT = "一般文字"
 AUTO_LABEL = "自動判斷 (由模型決定)"
 LABEL_CHOICES = [AUTO_LABEL, "PERSON", "ORGANIZATION", "ADDRESS", "LOCATION", "POSITION", "TW_PHONE",
                  "EMAIL", "TW_ID", "CREDIT_CARD", "URL", "FILE_NAME", "CREDENTIAL_LIKE", "GENERIC_SECRET"]
+
+
+def describe_text_action_result(action, original, result, mapping):
+    """根據處理前後差異與目前對照表，回傳 (層級, 標題, 給使用者的訊息)。
+
+    層級為 ok/info/warning。不能只因文字含標籤就宣稱整份文件已安全遮蔽；
+    也不能把「缺少還原對照表」誤說成「已經還原」。
+    """
+    tags = [m.group(0) for m in core.TAG_RE.finditer(original)]
+
+    if action == "mask":
+        if result:
+            return ("ok", "遮蔽完成", "已遮蔽新偵測到的敏感資訊，既有遮蔽標籤會保留。")
+        if tags:
+            return (
+                "info", "沒有新增需要遮蔽的內容",
+                f"文字中已有 {len(tags)} 處遮蔽標籤，本次沒有偵測到其他需要遮蔽的資訊。"
+                "可能已處理過；但模型仍可能漏判，不能保證所有個資都已遮蔽。",
+            )
+        return (
+            "info", "沒有偵測到可遮蔽資訊",
+            "本次沒有找到需要遮蔽的內容。可能原文沒有個資，也可能是模型未能辨識。",
+        )
+
+    if action == "restore":
+        if not tags:
+            return (
+                "info", "沒有可還原的遮蔽標籤",
+                "這段文字沒有 <PERSON_1> 這類遮蔽標籤，可能已經還原，或原本就沒有被遮蔽過。",
+            )
+        restorable = sum(mapping.get(tag, tag) != tag for tag in tags)
+        missing = len(tags) - restorable
+        if not result:
+            return (
+                "warning", "無法還原",
+                f"找到 {len(tags)} 處遮蔽標籤，但目前對照表沒有可用的原始資料。"
+                "可能已清除對照表，或標籤來自其他執行階段。",
+            )
+        if missing:
+            return (
+                "warning", "部分還原完成",
+                f"已還原 {restorable} 處標籤，另有 {missing} 處因缺少對照資料而保留原樣。",
+            )
+        return ("ok", "還原完成", f"已成功還原 {restorable} 處遮蔽標籤。")
+
+    raise ValueError(f"不支援的文字處理模式：{action}")
 
 
 def hotkey_from_event(event):
@@ -161,6 +212,25 @@ class App(tk.Tk):
         ttk.Checkbutton(bar, text="送模型前先前處理", variable=self.pp_var,
                         command=self._toggle_preprocess).pack(side="left", padx=(14, 2))
         ttk.Button(bar, text="預覽前處理", command=self.preview_preprocess).pack(side="left", padx=2)
+
+        # 使用者明確選擇文字處理方式，預設只遮蔽，避免自動還原造成個資外露。
+        mode_bar = ttk.Frame(t)
+        mode_bar.pack(fill="x", pady=(3, 5))
+        ttk.Label(mode_bar, text="處理方式：").pack(side="left")
+        self.text_action_var = tk.StringVar(value="mask")
+        ttk.Radiobutton(mode_bar, text="遮蔽（保留已存在標籤）", variable=self.text_action_var,
+                        value="mask").pack(side="left", padx=(5, 15))
+        ttk.Radiobutton(mode_bar, text="還原（依對照表）", variable=self.text_action_var,
+                        value="restore").pack(side="left")
+        ttk.Label(t, text=(
+            "A（uer/roberta-base-finetuned-cluener2020-chinese）  "
+            "C（Davlan/bert-base-multilingual-cased-ner-hrl）"
+        ), foreground="#475569", justify="left", wraplength=980).pack(anchor="w", pady=(0, 5))
+
+        # 在文字分頁保留最近一次的處理狀態，提示視窗關閉後仍可查看。
+        self.text_notice_var = tk.StringVar(value="選擇遮蔽或還原，按「判斷」執行。")
+        ttk.Label(t, textvariable=self.text_notice_var, foreground="#475569",
+                  justify="left", wraplength=980).pack(anchor="w", pady=(0, 5))
 
         panes = ttk.PanedWindow(t, orient="vertical")
         panes.pack(fill="both", expand=True)
@@ -784,24 +854,42 @@ class App(tk.Tk):
         print(f"[讀取] 已從剪貼簿讀入 {len(content)} 個字元")
 
     def run_text(self):
-        """判斷：輸入含標籤就還原、不含就遮蔽 (action="auto")；規則依「程式 / 一般文字」按鈕決定。
-        處理成功後清空輸入框，結果接在結果框原有內容後面 (結果框不清空)。"""
+        """依使用者選擇遮蔽或還原；沒有變動時保留輸入並清楚提示原因。
+        處理成功後清空輸入框，結果接在結果框原有內容後面。"""
         text = self.txt_in.get("1.0", "end-1c")
         if not text.strip():
             messagebox.showinfo("提示", "輸入框是空的")
             return
         is_code = (self.kind_var.get() == KIND_CODE)
+        action = self.text_action_var.get()
 
         def job():
             print("\n" + "=" * 50)
-            return core.process_text(text, self.mapping, action="auto", is_code=is_code)
+            return core.process_text(text, self.mapping, action=action, is_code=is_code)
 
         def done(result):
+            level, title, notice = describe_text_action_result(action, text, result, self.mapping)
+            self.text_notice_var.set(f"{title}：{notice}")
+            self.status.set(title)
+            print(f"[文字處理] {title}：{notice}")
+
             if not result:
-                print("[結果] 未偵測到需要遮蔽 / 還原的內容，結果與輸入相同")
-            self._append_result(result or text)
-            self.txt_in.delete("1.0", "end")      # 判斷完才清空輸入；處理失敗時不會走到這裡，輸入會保留
+                # 沒有變動時不再把原文重複加到結果框，也不清空輸入框，方便切換模式。
+                if level == "warning":
+                    messagebox.showwarning(title, notice)
+                else:
+                    messagebox.showinfo(title, notice)
+                return
+
+            self._append_result(result)
+            self.txt_in.delete("1.0", "end")
             self.refresh_lists()
+            # 還原後應明確顯示已還原幾處，以及是否有無法還原的標籤。
+            if action == "restore":
+                if level == "warning":
+                    messagebox.showwarning(title, notice)
+                else:
+                    messagebox.showinfo(title, notice)
 
         self._start(job, "處理文字中…", done)
 

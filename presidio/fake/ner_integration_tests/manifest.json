@@ -1,0 +1,148 @@
+{
+  "short": {
+    "file": "01_short.txt",
+    "mode": "text",
+    "targets": [
+      [
+        "林家宇",
+        "PERSON"
+      ],
+      [
+        "陳雅婷",
+        "PERSON"
+      ],
+      [
+        "王小明",
+        "PERSON"
+      ],
+      [
+        "0912-345-678",
+        "TW_PHONE"
+      ],
+      [
+        "test@example.com",
+        "EMAIL"
+      ]
+    ]
+  },
+  "repeat": {
+    "file": "02_repeat.txt",
+    "mode": "text",
+    "targets": [
+      [
+        "林家宇",
+        "PERSON"
+      ],
+      [
+        "陳雅婷",
+        "PERSON"
+      ]
+    ]
+  },
+  "boundary": {
+    "file": "03_boundary.txt",
+    "mode": "text",
+    "targets": [
+      [
+        "王小明",
+        "PERSON"
+      ],
+      [
+        "郭怡萱",
+        "PERSON"
+      ],
+      [
+        "陳雅婷",
+        "PERSON"
+      ],
+      [
+        "林家宇",
+        "PERSON"
+      ]
+    ],
+    "note": "觀察稱謂、職稱、企業名的誤判；非全部都視為必須命中"
+  },
+  "mixed": {
+    "file": "04_mixed.txt",
+    "mode": "text",
+    "targets": [
+      [
+        "陳雅婷",
+        "PERSON"
+      ],
+      [
+        "林家宇",
+        "PERSON"
+      ],
+      [
+        "0988-123-456",
+        "TW_PHONE"
+      ],
+      [
+        "john.smith@example.com",
+        "EMAIL"
+      ],
+      [
+        "qa@example.com",
+        "EMAIL"
+      ]
+    ],
+    "note": "英文姓名是否命中取決於是否啟用英文 Presidio"
+  },
+  "code": {
+    "file": "05_code.txt",
+    "mode": "code",
+    "targets": [
+      [
+        "林家宇",
+        "PERSON"
+      ],
+      [
+        "陳雅婷",
+        "PERSON"
+      ],
+      [
+        "demo@example.com",
+        "EMAIL"
+      ],
+      [
+        "0912-345-678",
+        "TW_PHONE"
+      ]
+    ],
+    "note": "程式碼模式由 handler_code.detect 驗證；API_KEY 是否遮蔽視正則規則而定"
+  },
+  "long": {
+    "file": "06_long_over_512_tokens.txt",
+    "mode": "text",
+    "targets": [
+      [
+        "林家宇",
+        "PERSON"
+      ],
+      [
+        "陳雅婷",
+        "PERSON"
+      ],
+      [
+        "王小明",
+        "PERSON"
+      ],
+      [
+        "0912-345-678",
+        "TW_PHONE"
+      ],
+      [
+        "test@example.com",
+        "EMAIL"
+      ]
+    ],
+    "note": "重點是 C 模型是否能掃描後段及維持全域 offset"
+  },
+  "negative": {
+    "file": "07_negative.txt",
+    "mode": "text",
+    "targets": [],
+    "note": "此檔用來人工檢查 FP，不能當成預期完全不遮蔽的保證"
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "chars": 115,
+  "mode": "text",
+  "targets": [
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 13,
+      "end": 16,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 93,
+      "end": 96,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 108,
+      "end": 111,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "陳雅婷",
+      "label": "PERSON",
+      "start": 70,
+      "end": 73,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "王小明",
+      "label": "PERSON",
+      "start": 84,
+      "end": 87,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "0912-345-678",
+      "label": "TW_PHONE",
+      "start": 28,
+      "end": 40,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "test@example.com",
+      "label": "EMAIL",
+      "start": 49,
+      "end": 65,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    }
+  ],
+  "restoration_exact": true,
+  "still_visible_target_values": [],
+  "final_person_spans": [
+    {
+      "start": 13,
+      "end": 16,
+      "text": "林家宇",
+      "source": "regex"
+    },
+    {
+      "start": 70,
+      "end": 73,
+      "text": "陳雅婷",
+      "source": "regex"
+    },
+    {
+      "start": 84,
+      "end": 87,
+      "text": "王小明",
+      "source": "regex"
+    },
+    {
+      "start": 93,
+      "end": 96,
+      "text": "林家宇",
+      "source": "regex"
+    },
+    {
+      "start": 108,
+      "end": 111,
+      "text": "林家宇",
+      "source": "regex"
+    }
+  ]
+}

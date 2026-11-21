@@ -440,3 +440,24 @@ def detect(text: str) -> List[Tuple[int, int, str, Optional[float], str]]:
     score 是模型判定的信心分數 (0~1)，正則規則比對到的固定是 None；
     source 是 "regex"/"en"/"zh" 三選一，供重疊時判斷優先序用。"""
     return _run_rules(text) + detect_known_entities(text) + presidio_matches(text)
+
+# --- BEGIN AC_REPEATED_NAME_PLUGIN (do not duplicate) ---
+# Keep the team's existing CLUENER implementation and its configured model path.
+_TEAM_CLUENER_ZH_NER = zh_ner
+
+def zh_ner(text: str):
+    """Production Chinese NER: reuse team A, then add C + Repeat / C chunking.
+
+    Environment variable PII_NER_BACKEND=a restores the team's original A-only
+    pipeline without removing this adapter. Default 'ac' enables A+C+Repeat.
+    """
+    import os as _os
+    if _os.environ.get('PII_NER_BACKEND', 'ac').strip().lower() == 'a':
+        return _TEAM_CLUENER_ZH_NER(text)
+    from ner_ac_engine import ensemble_from_a
+    return ensemble_from_a(text, _TEAM_CLUENER_ZH_NER(text))
+
+# presidio_matches() looks this up at runtime; handler_code uses zh_ner directly.
+NLP_MODELS['zh'] = zh_ner
+MODEL_STATUS.append('[設定] 中文 NER：團隊 CLUENER(A) + C + Repeat；C 長文模式由 PII_C_LONG_MODE 控制')
+# --- END AC_REPEATED_NAME_PLUGIN ---

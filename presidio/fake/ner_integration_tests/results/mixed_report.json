@@ -1,0 +1,89 @@
+{
+  "chars": 227,
+  "mode": "text",
+  "targets": [
+    {
+      "text": "陳雅婷",
+      "label": "PERSON",
+      "start": 152,
+      "end": 155,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "林家宇",
+      "label": "PERSON",
+      "start": 162,
+      "end": 165,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "0988-123-456",
+      "label": "TW_PHONE",
+      "start": 172,
+      "end": 184,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "john.smith@example.com",
+      "label": "EMAIL",
+      "start": 123,
+      "end": 145,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    },
+    {
+      "text": "qa@example.com",
+      "label": "EMAIL",
+      "start": 194,
+      "end": 208,
+      "handler_exact": true,
+      "handler_overlap": true,
+      "core_exact": true,
+      "core_overlap": true,
+      "original_visible_after_mask": false
+    }
+  ],
+  "restoration_exact": true,
+  "still_visible_target_values": [],
+  "final_person_spans": [
+    {
+      "start": 44,
+      "end": 54,
+      "text": "John Smith",
+      "source": "regex"
+    },
+    {
+      "start": 83,
+      "end": 93,
+      "text": "Emily Chen",
+      "source": "regex"
+    },
+    {
+      "start": 152,
+      "end": 155,
+      "text": "陳雅婷",
+      "source": "regex"
+    },
+    {
+      "start": 162,
+      "end": 165,
+      "text": "林家宇",
+      "source": "regex"
+    }
+  ]
+}
