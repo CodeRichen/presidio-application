@@ -34,3 +34,10 @@ ZJUICSR/AIguard-pii-detection-fast
 OpenMed/OpenMed-PII-Chinese-ModernMed-Large-395M-v1
 影像辨識模型:
 PaddleOCR
+
+Qwen/Qwen2.5-Coder-1.5B-Instruct  
+protectai/lakshyakh93-deberta_finetuned_pii-onnx 
+lakshyakh93/deberta_finetuned_pii   
+internlm/internlm2_5-1_8b-chat 
+Helsinki-NLP/opus-mt-en-zh  
+ckiplab/bert-base-chinese-ner  
