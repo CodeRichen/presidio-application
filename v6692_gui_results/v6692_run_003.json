@@ -1,0 +1,59 @@
+{
+  "status": "SYNTHETIC_GUI_PAIR_PASS",
+  "mode": "pair",
+  "trials": {
+    "hybrid": {
+      "safe": true,
+      "mode": "hybrid",
+      "reason": null,
+      "child_status": "COMPLETE",
+      "child_stage": "COMPLETE",
+      "processing_s": 80.921,
+      "run_and_audit_s": 84.845,
+      "preflight_s": 31.416,
+      "child_elapsed_s": 148.014,
+      "worker_ocr_calls": 14,
+      "worker_ocr_wall_s": 44.153,
+      "preflight_pairs": 2,
+      "preflight_equal_pairs": 2,
+      "text_regions_pass": 27,
+      "face_map_boxes_pass": 17,
+      "pdf_structure_pass": true,
+      "provider_route_verified": true
+    },
+    "cpu": {
+      "safe": true,
+      "mode": "cpu",
+      "reason": null,
+      "child_status": "COMPLETE",
+      "child_stage": "COMPLETE",
+      "processing_s": 181.889,
+      "run_and_audit_s": 185.739,
+      "preflight_s": null,
+      "child_elapsed_s": 212.145,
+      "worker_ocr_calls": 0,
+      "worker_ocr_wall_s": 0,
+      "preflight_pairs": 0,
+      "preflight_equal_pairs": 0,
+      "text_regions_pass": 27,
+      "face_map_boxes_pass": 17,
+      "pdf_structure_pass": true
+    }
+  },
+  "pixel_identical": true,
+  "schema": "pii_v6692_official_ui_synthetic_only_v1",
+  "synthetic_only": true,
+  "not_production_gpu_enablement": true,
+  "production_files_modified": false,
+  "gui": {
+    "samples": 3324,
+    "interval_ms": 100,
+    "p95_lag_ms": 10.643,
+    "p99_lag_ms": 12.319,
+    "max_lag_ms": 259.185,
+    "over_100ms": 5,
+    "over_250ms": 1,
+    "over_500ms": 0,
+    "click_to_finish_s": 363.22
+  }
+}

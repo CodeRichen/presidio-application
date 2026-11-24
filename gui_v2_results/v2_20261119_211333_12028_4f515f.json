@@ -1,0 +1,247 @@
+{
+  "schema_version": "gui_v2_diagnostic_1",
+  "timestamp": "2026-11-19T21:13:33+08:00",
+  "run_id": "20261119_211333_12028_4f515f",
+  "status": "OK",
+  "exception_type": null,
+  "input_extensions": {
+    ".jpg": 1,
+    ".pdf": 1
+  },
+  "output_count": 2,
+  "click_to_ui_s": 201.4641,
+  "worker_s": 201.2839,
+  "ui_lag_p95_ms": 11.33,
+  "ui_lag_max_ms": 2912.04,
+  "ui_lag_over_threshold": 3,
+  "ui_lag_threshold_ms": 500,
+  "rss_start_mb": 1568.45,
+  "rss_peak_mb": 2527.15,
+  "rss_end_mb": 1574.61,
+  "phase_summary": {
+    "ocr.backend": {
+      "calls": 15,
+      "inclusive_s": 136.98,
+      "exclusive_s": 136.98,
+      "max_call_s": 11.4,
+      "errors": 0
+    },
+    "pii.code_detect": {
+      "calls": 436,
+      "inclusive_s": 44.873,
+      "exclusive_s": 44.873,
+      "max_call_s": 0.179,
+      "errors": 0
+    },
+    "pdf.secure_export": {
+      "calls": 1,
+      "inclusive_s": 7.957,
+      "exclusive_s": 7.957,
+      "max_call_s": 7.957,
+      "errors": 0
+    },
+    "pii.presidio": {
+      "calls": 436,
+      "inclusive_s": 3.869,
+      "exclusive_s": 3.869,
+      "max_call_s": 0.019,
+      "errors": 0
+    },
+    "pdf.zoom_ocr": {
+      "calls": 14,
+      "inclusive_s": 164.589,
+      "exclusive_s": 2.115,
+      "max_call_s": 14.629,
+      "errors": 0
+    },
+    "ocr.preprocess": {
+      "calls": 15,
+      "inclusive_s": 1.881,
+      "exclusive_s": 1.881,
+      "max_call_s": 0.18,
+      "errors": 0
+    },
+    "face.detect": {
+      "calls": 8,
+      "inclusive_s": 1.483,
+      "exclusive_s": 1.483,
+      "max_call_s": 0.418,
+      "errors": 0
+    },
+    "pdf.page.scanned": {
+      "calls": 7,
+      "inclusive_s": 166.675,
+      "exclusive_s": 1.021,
+      "max_call_s": 27.49,
+      "errors": 0
+    },
+    "ui.log_batch": {
+      "calls": 1776,
+      "inclusive_s": 0.843,
+      "exclusive_s": 0.843,
+      "max_call_s": 0.228,
+      "errors": 0
+    },
+    "pii.detect": {
+      "calls": 1401,
+      "inclusive_s": 49.441,
+      "exclusive_s": 0.698,
+      "max_call_s": 0.192,
+      "errors": 0
+    },
+    "ui.poll": {
+      "calls": 1775,
+      "inclusive_s": 1.505,
+      "exclusive_s": 0.65,
+      "max_call_s": 0.229,
+      "errors": 0
+    },
+    "image.mask": {
+      "calls": 1,
+      "inclusive_s": 26.43,
+      "exclusive_s": 0.097,
+      "max_call_s": 26.43,
+      "errors": 0
+    },
+    "pdf.page_text_check": {
+      "calls": 7,
+      "inclusive_s": 0.085,
+      "exclusive_s": 0.085,
+      "max_call_s": 0.02,
+      "errors": 0
+    },
+    "pii.boxes": {
+      "calls": 15,
+      "inclusive_s": 49.522,
+      "exclusive_s": 0.081,
+      "max_call_s": 17.684,
+      "errors": 0
+    },
+    "pdf.mask": {
+      "calls": 1,
+      "inclusive_s": 174.839,
+      "exclusive_s": 0.068,
+      "max_call_s": 174.839,
+      "errors": 0
+    },
+    "map.save": {
+      "calls": 2,
+      "inclusive_s": 0.06,
+      "exclusive_s": 0.06,
+      "max_call_s": 0.054,
+      "errors": 0
+    },
+    "batch.dispatch": {
+      "calls": 1,
+      "inclusive_s": 201.284,
+      "exclusive_s": 0.014,
+      "max_call_s": 201.284,
+      "errors": 0
+    },
+    "ui.refresh_lists": {
+      "calls": 2,
+      "inclusive_s": 0.008,
+      "exclusive_s": 0.008,
+      "max_call_s": 0.004,
+      "errors": 0
+    },
+    "ocr.recognize": {
+      "calls": 15,
+      "inclusive_s": 136.98,
+      "exclusive_s": 0.001,
+      "max_call_s": 11.4,
+      "errors": 0
+    },
+    "pdf.zoom_merge": {
+      "calls": 7,
+      "inclusive_s": 0.0,
+      "exclusive_s": 0.0,
+      "max_call_s": 0.0,
+      "errors": 0
+    },
+    "ui.refresh_map": {
+      "calls": 1,
+      "inclusive_s": 0.0,
+      "exclusive_s": 0.0,
+      "max_call_s": 0.0,
+      "errors": 0
+    }
+  },
+  "instrumented_stages": [
+    "batch.dispatch",
+    "media.file",
+    "pdf.mask",
+    "image.mask",
+    "pdf.page.scanned",
+    "pdf.page.text",
+    "pdf.zoom_ocr",
+    "pdf.zoom_merge",
+    "pdf.page_text_check",
+    "ocr.preprocess",
+    "ocr.recognize",
+    "pii.boxes",
+    "pii.detect",
+    "pdf.secure_export",
+    "map.save",
+    "face.detect",
+    "face.model_detect",
+    "face.padding",
+    "ocr.backend",
+    "pii.presidio",
+    "pii.code_detect",
+    "ui.poll",
+    "ui.log_batch",
+    "ui.refresh_map",
+    "ui.refresh_lists"
+  ],
+  "events_truncated": 0,
+  "slow_ui_gaps": [
+    {
+      "at_s": 195.866,
+      "delay_ms": 651.83,
+      "phase_samples": {
+        "pdf.secure_export": 1
+      },
+      "sample_count": 1,
+      "max_sample_gap_ms": 0.0,
+      "overlapping_stages_s": {
+        "pdf.secure_export": 0.652,
+        "pdf.mask": 0.652,
+        "batch.dispatch": 0.652
+      }
+    },
+    {
+      "at_s": 197.592,
+      "delay_ms": 618.66,
+      "phase_samples": {
+        "pdf.secure_export": 2
+      },
+      "sample_count": 2,
+      "max_sample_gap_ms": 139.06,
+      "overlapping_stages_s": {
+        "pdf.secure_export": 0.619,
+        "pdf.mask": 0.619,
+        "batch.dispatch": 0.619,
+        "ui.poll": 0.139
+      }
+    },
+    {
+      "at_s": 201.116,
+      "delay_ms": 2912.04,
+      "phase_samples": {
+        "pdf.secure_export": 1
+      },
+      "sample_count": 1,
+      "max_sample_gap_ms": 0.0,
+      "overlapping_stages_s": {
+        "pdf.secure_export": 2.912,
+        "pdf.mask": 2.912,
+        "batch.dispatch": 2.912
+      }
+    }
+  ],
+  "monitor_sampler_samples": 3092,
+  "monitor_sampler_max_gap_ms": 2922.11,
+  "slow_gap_correlation_is_approximate": true,
+  "note": "A timer lag is not proof of GIL contention. Phase samples are approximate. No PII values, names, paths, page text or crops recorded."
+}

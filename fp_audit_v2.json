@@ -1,0 +1,159 @@
+[
+  {
+    "file": "pii_face_01_front.png",
+    "total_text": 3,
+    "text_coverage": [
+      [
+        "PERSON",
+        1.0
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        1.0
+      ]
+    ],
+    "non_ground_truth_black_pixels": 5716
+  },
+  {
+    "file": "pii_face_02_glasses.png",
+    "total_text": 3,
+    "text_coverage": [
+      [
+        "PERSON",
+        1.0
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        1.0
+      ]
+    ],
+    "non_ground_truth_black_pixels": 4131
+  },
+  {
+    "file": "pii_face_03_side.png",
+    "total_text": 3,
+    "text_coverage": [
+      [
+        "PERSON",
+        1.0
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        1.0
+      ]
+    ],
+    "non_ground_truth_black_pixels": 10142
+  },
+  {
+    "file": "pii_face_04_lowlight.png",
+    "total_text": 3,
+    "text_coverage": [
+      [
+        "PERSON",
+        1.0
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        0.9980842911877394
+      ]
+    ],
+    "non_ground_truth_black_pixels": 4520
+  },
+  {
+    "file": "pii_face_05_group_outdoor.png",
+    "total_text": 6,
+    "text_coverage": [
+      [
+        "PERSON",
+        0.9929078014184397
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        1.0
+      ],
+      [
+        "PERSON",
+        1.0
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        1.0
+      ]
+    ],
+    "non_ground_truth_black_pixels": 6123
+  },
+  {
+    "file": "pii_face_06_group_indoor.png",
+    "total_text": 6,
+    "text_coverage": [
+      [
+        "PERSON",
+        1.0
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        1.0
+      ],
+      [
+        "PERSON",
+        1.0
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        1.0
+      ]
+    ],
+    "non_ground_truth_black_pixels": 4553
+  },
+  {
+    "file": "pii_face_07_mask.png",
+    "total_text": 3,
+    "text_coverage": [
+      [
+        "PERSON",
+        1.0
+      ],
+      [
+        "TW_PHONE",
+        1.0
+      ],
+      [
+        "EMAIL",
+        1.0
+      ]
+    ],
+    "non_ground_truth_black_pixels": 4127
+  }
+]

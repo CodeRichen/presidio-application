@@ -24,6 +24,9 @@ import time
 import shutil
 import struct
 import contextlib
+import hashlib
+import json
+import tempfile
 from collections import Counter
 
 import win32clipboard
@@ -56,10 +59,10 @@ SENSITIVE_FILE = entity_store.SENSITIVE_FILE   # 敏感清單 (名單都不會�
 
 USE_KNOWN_ITEMS = True    # 偵測時是否讀取敏感清單並自動遮蔽
 
-# 資料夾掃描：先把整個資料夾複製到「同層」的新資料夾 (原名 + SCAN_OUTPUT_SUFFIX)，
-# 再只對複製出來的檔案做遮蔽，檔名不變、原資料夾完全不動
+# 資料夾掃描：僅在暫存目錄產生真正遮蔽的檔案，整批驗證後一次發布。
+# 未命中的原稿不會複製；原資料夾保持不動。
 SCAN_OUTPUT_SUFFIX = "_masked"
-SCAN_SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv"}   # 這些資料夾會複製，但不掃描
+SCAN_SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv"}   # 略過這些資料夾，不複製
 # 偵測類型名稱含這些關鍵字就視為「高風險」(憑證/金融/證號)，其餘有命中的算「中風險」
 HIGH_RISK_KEYWORDS = ("KEY", "JWT", "PASSWORD", "PASSWD", "SECRET", "TOKEN",
                       "CARD", "NATIONAL_ID", "SSN", "PRIVATE")
@@ -343,98 +346,442 @@ def make_tagger(mapping, source=""):
     return tag_value
 
 
-# ---------- 圖片 / PDF ----------
-def _mask_media(path, out=None):
-    """呼叫 handler_media 遮蔽圖片/PDF，並把偵測到的值記錄進敏感清單。回傳 (輸出檔路徑或 None, entries)。
-    out=None：輸出成 <原檔名>_masked<副檔名>，沒偵測到任何內容時不留下輸出檔 (快速鍵 / 檔案分頁用)。
-    指定 out：直接寫到那個路徑 (資料夾掃描用，檔名與原檔相同)；沒偵測到時把原檔複製過去，確保內容一致。"""
-    ext = os.path.splitext(path)[1].lower()
-    explicit = out is not None
-    if out is None:
-        out = f"{os.path.splitext(path)[0]}_masked{ext}"
-    existed = os.path.exists(out)
-    func = handler_media.mask_pdf if ext == ".pdf" else handler_media.mask_image
-    try:
-        entries = list(func(path, out, handler_media.DEFAULT_MAP_FILE) or [])
-    except Exception:
-        if explicit:                       # 失敗時不要留下寫到一半的檔案
-            shutil.copy2(path, out)
-        raise
+# ---------- V6.6.9.5: 交易式檔案輸出保護（不含通用 PII 召回率證明） ----------
+class SafeOutputError(RuntimeError):
+    """對外只提供不含個資與絕對路徑的安全失敗訊息。"""
+
+
+def _safe_source(path):
+    path = os.path.abspath(os.fspath(path))
+    if not os.path.isfile(path) or os.path.islink(path):
+        raise SafeOutputError("輸入不是一般檔案或包含檔案符號連結")
+    return path
+
+
+def _file_digest(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _assert_safe_candidate(source, candidate, *, media=False):
+    if os.path.islink(candidate) or not os.path.isfile(candidate) or os.path.getsize(candidate) == 0:
+        raise SafeOutputError("輸出不存在、為空或是不允許的符號連結")
+    if os.path.samefile(source, candidate) or _file_digest(source) == _file_digest(candidate):
+        raise SafeOutputError("疑似未遮蔽原稿，不允許發布")
+    if not media:
+        return
+    ext = os.path.splitext(source)[1].lower()
+    if ext == ".pdf":
+        # 檢查 PDF 可讀、頁數相同、已重新建立為每頁單一平面影像，
+        # 且不存在可抽取文字、附件、註解、連結、表單。
+        # 這不能證明「所有個資」都被模型找出，仍需獨立 GT 驗收。
+        try:
+            import fitz
+            with fitz.open(source) as orig, fitz.open(candidate) as doc:
+                if len(doc) == 0 or len(doc) != len(orig) or doc.needs_pass:
+                    raise SafeOutputError("PDF 頁數、加密或開啟狀態異常")
+                if doc.embfile_count() != 0 or doc.is_form_pdf:
+                    raise SafeOutputError("PDF 含附件或表單")
+                for page in doc:
+                    if page.get_text().strip() or len(page.get_images(full=True)) != 1:
+                        raise SafeOutputError("PDF 存在文字層或不是單影像頁面")
+                    if page.get_links() or page.first_annot or page.first_widget:
+                        raise SafeOutputError("PDF 存在連結、註解或表單元件")
+        except SafeOutputError:
+            raise
+        except Exception as exc:
+            raise SafeOutputError("PDF 輸出結構檢查失敗") from exc
+    else:
+        try:
+            from PIL import Image
+            with Image.open(candidate) as im:
+                im.verify()
+            with Image.open(candidate) as im, Image.open(source) as orig:
+                if im.size != orig.size:
+                    raise SafeOutputError("遮蔽圖片尺寸與原稿不符")
+        except SafeOutputError:
+            raise
+        except Exception as exc:
+            raise SafeOutputError("遮蔽圖片驗證失敗") from exc
+
+
+def _verify_mask_coverage(candidate, entries, *, is_pdf):
+    """機械性檢查：回報的每個 PII bbox，在實際輸出中需為黑色。
+
+    不等於自動找出未知 PII 的完整召回率；搭配人工 GT 測試使用。
+    """
+    import math
+    from PIL import Image
     if not entries:
-        if explicit:
-            shutil.copy2(path, out)
-        elif not existed and os.path.exists(out):
+        raise SafeOutputError("沒有可驗證的遮蔽框")
+    cached_pages = {}
+    try:
+        if is_pdf:
+            import fitz
+            doc = fitz.open(candidate)
+        else:
+            doc = None
+        try:
+            for e in entries:
+                box = e.get("bbox") if isinstance(e, dict) else None
+                if not isinstance(box, (list, tuple)) or len(box) != 4:
+                    raise SafeOutputError("缺少遮蔽框座標，不能驗證已遮蔽")
+                try:
+                    coords = [float(v) for v in box]
+                except (ValueError, TypeError) as exc:
+                    raise SafeOutputError("遮蔽框座標不合法") from exc
+                if not all(math.isfinite(v) for v in coords):
+                    raise SafeOutputError("遮蔽框座標非有限數字")
+                x0,y0,x1,y1 = coords
+                if x1 <= x0 or y1 <= y0:
+                    raise SafeOutputError("遮蔽框大小不合法")
+                page = int(e.get("page", 0)) if is_pdf else 0
+                if page not in cached_pages:
+                    if is_pdf:
+                        if page < 0 or page >= len(doc):
+                            raise SafeOutputError("遮蔽框 PDF 頁碼不合法")
+                        pix = doc[page].get_pixmap(matrix=fitz.Matrix(2,2), alpha=False)
+                        im = Image.frombytes("RGB", (pix.width,pix.height),pix.samples)
+                        ratio=2
+                    else:
+                        im=Image.open(candidate).convert("RGB")
+                        ratio=1
+                    cached_pages[page]=(im,ratio)
+                im,ratio=cached_pages[page]
+                x0=max(0, int(x0*ratio));y0=max(0,int(y0*ratio))
+                x1=min(im.width,int(math.ceil(x1*ratio)))
+                y1=min(im.height,int(math.ceil(y1*ratio)))
+                if x1 <= x0 or y1 <= y0:
+                    raise SafeOutputError("遮蔽框不在輸出影像內")
+                # 避免邊緣抗鋸齒；在 bbox 中心 5x5 網格抽樣。
+                n=0;black=0
+                for yi in range(5):
+                    y=min(y1-1,max(y0, int(y0+(yi+0.5)*(y1-y0)/5)))
+                    for xi in range(5):
+                        x=min(x1-1,max(x0, int(x0+(xi+0.5)*(x1-x0)/5)))
+                        rgb=im.getpixel((x,y))
+                        n+=1
+                        if max(rgb[:3]) <= 55: black+=1
+                if black/n < 0.8:
+                    raise SafeOutputError("輸出遮蔽框未達黑色覆蓋門檻")
+        finally:
+            if doc is not None: doc.close()
+            for image,_ in cached_pages.values(): image.close()
+    except SafeOutputError:
+        raise
+    except Exception as exc:
+        raise SafeOutputError("實際遮蔽框像素驗證失敗") from exc
+
+
+def _private_temp(parent):
+    os.makedirs(parent, exist_ok=True)
+    result = tempfile.mkdtemp(prefix=".pii_private_stage_", dir=parent)
+    try:
+        os.chmod(result, 0o700)
+    except OSError:
+        pass
+    return result
+
+
+def _atomic_private_write(path, data):
+    folder = os.path.dirname(os.path.abspath(path))
+    os.makedirs(folder, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".pii_map_", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "wb") as f:
             try:
-                os.remove(out)
+                os.chmod(temporary, 0o600)
             except OSError:
                 pass
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.lexists(temporary):
+            os.unlink(temporary)
+
+
+def _snapshot_map(path):
+    if not os.path.isfile(path):
+        return None
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def _restore_map(path, original):
+    if original is None:
+        if os.path.lexists(path):
+            os.unlink(path)
+    else:
+        _atomic_private_write(path, original)
+
+
+class _MaskedBatch:
+    """先全部處理、檢查，最後發布；原檔永不作為成功輸出。"""
+
+    def __init__(self, mapping):
+        self.original_mapping = mapping
+        self.working_mapping = dict(mapping)
+        self.items = []  # (source, candidate, destination, source_hash, candidate_hash)
+        self.tempdirs = []
+        self.media_records = {}
+        self.records = []
+        self.taggers = []
+        self.created = []
+
+    def stage_dir(self, parent):
+        temp = _private_temp(parent)
+        self.tempdirs.append(temp)
+        return temp
+
+    def add(self, source, candidate, destination, source_digest=None):
+        source = _safe_source(source)
+        destination = os.path.abspath(destination)
+        if os.path.lexists(destination):
+            raise SafeOutputError("輸出檔已存在，拒絕覆蓋原有檔案")
+        if os.path.normcase(source) == os.path.normcase(destination):
+            raise SafeOutputError("來源檔與輸出檔不可相同")
+        if any(os.path.normcase(item[2]) == os.path.normcase(destination) for item in self.items):
+            raise SafeOutputError("批次輸出路徑重複，拒絕發布")
+        self.items.append((source, candidate, destination, source_digest or _file_digest(source),
+                           _file_digest(candidate)))
+
+    def stage_media(self, source, candidate, destination):
+        source = _safe_source(source)
+        source_digest = _file_digest(source)
+        os.makedirs(os.path.dirname(candidate), exist_ok=True)
+        media_private = self.stage_dir(os.path.dirname(os.path.abspath(source)))
+        private_map = os.path.join(media_private, "isolated_media_map.json")
+        func = handler_media.mask_pdf if source.lower().endswith(".pdf") else handler_media.mask_image
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                entries = list(func(source, candidate, private_map) or [])
+        except Exception as exc:
+            raise SafeOutputError("圖片／PDF 遮蔽執行失敗") from exc
+        if not entries:
+            # 即使 handler_media 產生未遮蔽的複本，也絕對不會進入發布清單。
+            if os.path.lexists(candidate):
+                os.unlink(candidate)
+            return []
+        _assert_safe_candidate(source, candidate, media=True)
+        _verify_mask_coverage(candidate, entries, is_pdf=source.lower().endswith(".pdf"))
+        try:
+            with open(private_map, encoding="utf-8") as f:
+                saved = json.load(f)
+            key = os.path.basename(candidate)
+            if not isinstance(saved, dict) or saved.get(key) != entries:
+                raise SafeOutputError("隔離還原對照表缺失或內容不一致")
+        except (OSError, ValueError, TypeError) as exc:
+            raise SafeOutputError("隔離還原對照表驗證失敗") from exc
+        if key in self.media_records:
+            raise SafeOutputError("批次檔名重複，還原對照表無法區分")
+        self.media_records[key] = entries
+        self.records.extend((e.get("value"), e.get("label")) for e in entries)
+        self.add(source, candidate, destination, source_digest)
+        return entries
+
+    def stage_text(self, source, candidate, destination, *, is_code=False, source_name=""):
+        source = _safe_source(source)
+        source_digest = _file_digest(source)
+        content, enc = _read_text_file(source)
+        if content is None:
+            raise SafeOutputError("文字編碼無法辨識，拒絕略過")
+        # 遮蔽前後 PII 值不寫入 UI log；正式敏感清單等成功後才更新。
+        mapping_before = dict(self.working_mapping)
+        with contextlib.redirect_stdout(io.StringIO()):
+            masked, matches = _anonymize_full(content, self.working_mapping, is_code,
+                                              False, False, source_name)
+        if not matches:
+            self.working_mapping.clear()
+            self.working_mapping.update(mapping_before)
+            return []
+        if not isinstance(masked, str) or masked == content:
+            raise SafeOutputError("文字處理沒有產生有效遮蔽結果")
+        os.makedirs(os.path.dirname(candidate), exist_ok=True)
+        with open(candidate, "wb") as f:
+            f.write(masked.encode(enc))
+        _assert_safe_candidate(source, candidate)
+        self.records.extend((content[s:e], label) for s, e, label, *_ in matches)
+        self.add(source, candidate, destination, source_digest)
+        return matches
+
+    def stage_table(self, source, candidate, destination, *, source_name=""):
+        source = _safe_source(source)
+        source_digest = _file_digest(source)
+        private = self.stage_dir(os.path.dirname(os.path.abspath(source)))
+        private_input = os.path.join(private, os.path.basename(source))
+        shutil.copy2(source, private_input)  # 僅存在私有暫存目錄，不進入發布資料夾。
+        mapping_before = dict(self.working_mapping)
+        tagger = make_tagger(self.working_mapping, source_name)
+        try:
+            handler_csv.LAST_REPORT = []
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = handler_csv.mask_file(private_input, detect_cell, tagger)
+        except Exception as exc:
+            raise SafeOutputError("表格遮蔽執行失敗") from exc
+        if not result:
+            self.working_mapping.clear()
+            self.working_mapping.update(mapping_before)
+            return []
+        report = list(getattr(handler_csv, "LAST_REPORT", []))
+        if not report:
+            raise SafeOutputError("表格引擎輸出沒有有效遮蔽報告，拒絕發布")
+        result = os.path.abspath(result)
+        if (os.path.dirname(result) != os.path.abspath(private)
+                or os.path.islink(result) or not os.path.isfile(result)):
+            raise SafeOutputError("表格引擎輸出了不受信任的路徑")
+        os.makedirs(os.path.dirname(candidate), exist_ok=True)
+        os.replace(result, candidate)
+        _assert_safe_candidate(source, candidate)
+        self.add(source, candidate, destination, source_digest)
+        self.taggers.append(tagger)
+        return report
+
+    def verify_sources(self):
+        for source, candidate, destination, digest, candidate_digest in self.items:
+            if not os.path.isfile(source) or os.path.islink(source) or _file_digest(source) != digest:
+                raise SafeOutputError("處理期間來源檔案已變更，拒絕發布")
+            published_by_us = any(
+                destination == created or (
+                    os.path.isdir(created) and
+                    os.path.commonpath((created, destination)) == created
+                ) for created in self.created
+            )
+            verified = (candidate if os.path.isfile(candidate) else
+                        destination if published_by_us else None)
+            if (not verified or os.path.islink(verified) or not os.path.isfile(verified)
+                    or _file_digest(verified) != candidate_digest):
+                raise SafeOutputError("暫存或已發布輸出被變更，拒絕發布")
+
+    def persist_maps(self):
+        tpath, mpath = os.path.abspath(MAP_FILE), os.path.abspath(handler_media.DEFAULT_MAP_FILE)
+        old_text, old_media = _snapshot_map(tpath), _snapshot_map(mpath)
+        changed = []
+        try:
+            if self.working_mapping != self.original_mapping:
+                content = "".join(f"{k}\t{v}\n" for k, v in self.working_mapping.items())
+                _atomic_private_write(tpath, content.encode("utf-8"))
+                changed.append((tpath, old_text))
+            if self.media_records:
+                current = json.loads(old_media.decode("utf-8")) if old_media else {}
+                if not isinstance(current, dict):
+                    raise SafeOutputError("還原對照表格式錯誤")
+                current.update(self.media_records)
+                _atomic_private_write(mpath, json.dumps(current, ensure_ascii=False, indent=2).encode("utf-8"))
+                changed.append((mpath, old_media))
+        except Exception as exc:
+            for path, old in reversed(changed):
+                _restore_map(path, old)
+            raise SafeOutputError("無法安全更新對照表，已撤銷輸出") from exc
+        return changed
+
+    def finish(self, publish):
+        """publish() 發布輸出；失敗時撤銷該批次建立的成果及私有對照表。"""
+        self.verify_sources()
+        changed_maps = []
+        try:
+            publish()
+            self.verify_sources()
+            changed_maps = self.persist_maps()
+            self.original_mapping.clear()
+            self.original_mapping.update(self.working_mapping)
+        except Exception:
+            # 僅刪除本次確實建立的公開輸出，不碰任何原有檔案。
+            for created in reversed(self.created):
+                try:
+                    if os.path.isdir(created) and not os.path.islink(created):
+                        shutil.rmtree(created)
+                    elif os.path.lexists(created):
+                        os.unlink(created)
+                except OSError:
+                    pass
+            for path, old in reversed(changed_maps):
+                _restore_map(path, old)
+            raise
+        # 敏感清單是輔助記錄；與對外輸出解耦，失敗也不得記錄原文或曝露。
+        try:
+            if self.records:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    record_sensitive(self.records, "安全批次")
+            for tagger in self.taggers:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    tagger.flush()
+        except Exception:
+            print("[警告] 敏感清單更新失敗；遮蔽檔案已完成，請另行檢查名單")
+
+    def cleanup(self):
+        for directory in reversed(self.tempdirs):
+            if os.path.isdir(directory):
+                shutil.rmtree(directory)
+
+
+def _mask_media(path, out=None):
+    """單檔安全入口。失敗或零命中不輸出，絕不複製原始內容。"""
+    source = _safe_source(path)
+    ext = os.path.splitext(source)[1].lower()
+    destination = (os.path.abspath(out) if out is not None else
+                   os.path.splitext(source)[0] + "_masked" + ext)
+    batch = _MaskedBatch({})
+    stage = batch.stage_dir(os.path.dirname(destination))
+    candidate = os.path.join(stage, os.path.basename(destination))
+    try:
+        entries = batch.stage_media(source, candidate, destination)
+        if entries:
+            def publish():
+                if os.path.lexists(destination):
+                    raise SafeOutputError("輸出已存在")
+                os.link(candidate, destination)  # 原子 no-clobber；不支援則拒絕輸出
+                batch.created.append(destination)
+            batch.finish(publish)
+            return destination, entries
         return None, []
-    record_sensitive([(e.get("value"), e.get("label")) for e in entries], os.path.basename(path))
-    return out, entries
+    finally:
+        batch.cleanup()
 
 
-# ---------- 檔案分派 ----------
 def dispatch_files(paths, mapping) -> list:
-    """回傳實際產生的去識別化檔案路徑。不碰剪貼簿。"""
+    """完整批次成功才公布輸出；單檔處理例外直接終止並撤銷本次成果。"""
+    batch = _MaskedBatch(mapping)
     produced = []
-    for path in paths:
-        ext = os.path.splitext(path)[1].lower()
-        name = os.path.basename(path)
-
-        if ext in MEDIA_EXTENSIONS:
-            print(f"[分類] {path} -> 圖片/PDF，交給 handler_media 處理")
-            try:
-                out_path, entries = _mask_media(path)
-            except Exception as e:
-                print(f"[錯誤] 圖片/PDF 處理失敗：{e}")
+    try:
+        for path in paths:
+            source = _safe_source(path)
+            ext = os.path.splitext(source)[1].lower()
+            if ext not in (MEDIA_EXTENSIONS | TABLE_EXTENSIONS | CODE_EXTENSIONS | TEXT_FILE_EXTENSIONS):
+                print("[略過] 不支援的副檔名（未複製任何資料）")
                 continue
-            if out_path:
-                produced.append(out_path)
-                print(f"[完成] 已產生去識別化檔案：{out_path} (共 {len(entries)} 筆)")
+            destination = os.path.splitext(source)[0] + "_masked" + ext
+            stage = batch.stage_dir(os.path.dirname(source))
+            candidate = os.path.join(stage, os.path.basename(destination))
+            if ext in MEDIA_EXTENSIONS:
+                hits = batch.stage_media(source, candidate, destination)
+            elif ext in TABLE_EXTENSIONS:
+                hits = batch.stage_table(source, candidate, destination, source_name=os.path.basename(source))
             else:
-                print("[結果] 未偵測到需要遮蔽的內容")
-
-        elif ext in TABLE_EXTENSIONS:
-            print(f"[分類] {path} -> 表格檔案，交給 handler_csv 處理 (欄位內有個資則整欄遮蔽)")
-            tagger = make_tagger(mapping, name)
-            try:
-                out_path = handler_csv.mask_file(path, detect_cell, tagger)
-            except Exception as e:
-                print(f"[錯誤] 表格處理失敗：{e}")
-                continue
-            if out_path:
-                tagger.flush()
-                save_map(mapping)
-                produced.append(out_path)
-                print(f"[完成] 已產生去識別化檔案：{out_path}")
-            else:
-                print("[結果] 未偵測到需要遮蔽的內容")
-
-        elif ext in CODE_EXTENSIONS or ext in TEXT_FILE_EXTENSIONS:
-            is_code = ext in CODE_EXTENSIONS
-            kind = "程式碼檔案" if is_code else "純文字檔案"
-            print(f"[分類] {path} -> {kind}(依副檔名判斷)")
-            try:
-                with open(path, encoding="utf-8", errors="ignore") as f:
-                    content = f.read()
-            except OSError as e:
-                print(f"[錯誤] 讀取失敗：{e}")
-                continue
-            masked = anonymize_text(content, mapping, is_code=is_code, source=name)
-            if masked:
-                out_path = f"{os.path.splitext(path)[0]}_masked{ext}"
-                with open(out_path, "w", encoding="utf-8") as f:
-                    f.write(masked)
-                produced.append(out_path)
-                print(f"[完成] 已產生去識別化檔案：{out_path}")
-            else:
-                print("[結果] 未偵測到需要遮蔽的內容")
-
-        else:
-            print(f"[跳過] {path}：副檔名不在支援清單內")
-
-    return produced
-
+                hits = batch.stage_text(source, candidate, destination, is_code=(ext in CODE_EXTENSIONS),
+                                        source_name=os.path.basename(source))
+            if hits:
+                produced.append(destination)
+        if not produced:
+            return []
+        def publish():
+            for _, candidate, destination, _, _ in batch.items:
+                if os.path.lexists(destination):
+                    raise SafeOutputError("輸出已存在，不會覆蓋使用者原有檔案")
+                os.link(candidate, destination)
+                batch.created.append(destination)
+        batch.finish(publish)
+        print(f"[完成] 批次成功，產生 {len(produced)} 份遮蔽結果")
+        return produced
+    except Exception as exc:
+        print("[失敗] 批次已中止，不會回報部分成功的結果")
+        raise SafeOutputError("檔案處理失敗，已拒絕發布本批次成果") from exc
+    finally:
+        batch.cleanup()
 
 # ---------- 資料夾掃描 ----------
 _OUT_DIR_RE = re.compile(re.escape(SCAN_OUTPUT_SUFFIX) + r"(_\d+)?$")
@@ -484,7 +831,8 @@ def list_scan_files(folder, recursive=True):
 
 def _read_text_file(path):
     """讀文字檔並記住編碼，之後寫回同一種編碼 (換行符號也原樣保留)。無法判斷編碼回傳 (None, None)"""
-    raw = open(path, "rb").read()
+    with open(path, "rb") as f:
+        raw = f.read()
     if raw.startswith(b"\xef\xbb\xbf"):
         return raw.decode("utf-8-sig"), "utf-8-sig"
     for enc in ("utf-8", "cp950", "big5"):     # 同 notebook 的編碼讀取順序 (BOM 已在上面處理)
@@ -496,83 +844,107 @@ def _read_text_file(path):
 
 
 def _scan_one(src, dst, mapping):
-    """src = 原資料夾裡的檔案 (只讀)，dst = 輸出資料夾裡對應的複本 (檔名相同，在這裡就地遮蔽)"""
-    ext = os.path.splitext(dst)[1].lower()
-    name = os.path.basename(dst)
-    res = {"path": src, "output": None, "kind": "", "hits": 0, "labels": {}, "error": None}
-
-    if ext in MEDIA_EXTENSIONS:
-        res["kind"] = "圖片/PDF"
-        out, entries = _mask_media(src, dst)          # 從原檔讀、寫到複本，檔名不變
-        res.update(output=out, hits=len(entries),
-                   labels=dict(Counter(e.get("label") or "UNKNOWN" for e in entries)))
-
-    elif ext in TABLE_EXTENSIONS:
-        res["kind"] = "表格"
-        tagger = make_tagger(mapping, name)
-        with contextlib.redirect_stdout(io.StringIO()):
-            tmp = handler_csv.mask_file(dst, detect_cell, tagger)     # 產生 <名稱>_masked.<副檔名>
-        if tmp:
-            os.replace(tmp, dst)                      # 換回原檔名
-            tagger.flush()
-            report = list(getattr(handler_csv, "LAST_REPORT", []))    # [(欄名, 類型, 原因)]
-            res.update(output=dst, hits=len(report), labels=dict(Counter(r[1] for r in report)))
-
-    else:
-        is_code = ext in CODE_EXTENSIONS
-        res["kind"] = "程式碼" if is_code else "文字"
-        content, enc = _read_text_file(dst)
-        if content is None:
-            raise ValueError("無法判斷文字編碼 (不是 UTF-8 / Big5)，已略過")
-        with contextlib.redirect_stdout(io.StringIO()):
-            masked, matches = _anonymize_full(content, mapping, is_code, False, True, name)
-        if masked:
-            with open(dst, "wb") as f:
-                f.write(masked.encode(enc))
-            res.update(output=dst, hits=len(matches), labels=dict(Counter(m[2] for m in matches)))
-
-    res["risk"] = _risk_of(res["labels"]) if res["output"] else "無"
-    return res
+    """相容單檔介面：dst 只在確實產生遮蔽時建立；不會複製未遮蔽原稿。"""
+    source = _safe_source(src)
+    ext = os.path.splitext(source)[1].lower()
+    name = os.path.basename(source)
+    res = {"path": source, "output": None, "kind": "", "hits": 0,
+           "labels": {}, "error": None, "risk": "無"}
+    batch = _MaskedBatch(mapping)
+    temp = batch.stage_dir(os.path.dirname(os.path.abspath(dst)))
+    candidate = os.path.join(temp, name)
+    try:
+        if ext in MEDIA_EXTENSIONS:
+            res["kind"] = "圖片/PDF"
+            hits = batch.stage_media(source, candidate, dst)
+            counts = Counter(e.get("label") or "UNKNOWN" for e in hits)
+        elif ext in TABLE_EXTENSIONS:
+            res["kind"] = "表格"
+            hits = batch.stage_table(source, candidate, dst, source_name=name)
+            counts = Counter((r[1] if len(r) > 1 else "UNKNOWN") for r in hits)
+        else:
+            res["kind"] = "程式碼" if ext in CODE_EXTENSIONS else "文字"
+            hits = batch.stage_text(source, candidate, dst, is_code=(ext in CODE_EXTENSIONS), source_name=name)
+            counts = Counter(m[2] for m in hits)
+        if batch.items:
+            def publish():
+                if os.path.lexists(dst):
+                    raise SafeOutputError("目標檔已存在")
+                os.link(candidate, dst)
+                batch.created.append(dst)
+            batch.finish(publish)
+            res.update(output=dst, hits=len(hits), labels=dict(counts), risk=_risk_of(counts))
+        return res
+    finally:
+        batch.cleanup()
 
 
 def scan_folder(folder, mapping, recursive=True, progress=None):
-    """掃描資料夾：
-        1. 在同層建立新資料夾 (<原名>_masked)，先把原資料夾裡的所有東西複製過去；
-        2. 只對複製出來的檔案處理：檔名不變，有敏感資料的檔案內容會被遮蔽，其他檔案維持原樣；
-        3. 原資料夾完全不動。
-    回傳 (輸出資料夾路徑, 每個檔案的結果)。結果 (高風險在前)：
-        {"path": 原檔, "output": 輸出資料夾裡被遮蔽的檔案或 None, "kind","hits","labels","error","risk"}"""
+    """先在不公開的暫存目錄生成 *僅遮蔽* 成果，全部成功才發布。
+
+    未命中的檔案、未知格式、跳過的資料夾不會複製到輸出資料夾。
+    這是安全設計上的刻意行為變更：無命中 ≠ 已證明原檔安全。
+    """
     folder = os.path.abspath(folder)
+    if not os.path.isdir(folder) or os.path.islink(folder):
+        raise SafeOutputError("來源資料夾不存在或不可使用")
     dest = make_output_dir(folder)
-    print(f"[掃描] 複製 {folder} -> {dest}")
-    shutil.copytree(folder, dest)
-
-    files = list_scan_files(dest, recursive)
-    print(f"[掃描] 共 {len(files)} 個可處理的檔案 (子資料夾: {'含' if recursive else '不含'})")
+    files = list_scan_files(folder, recursive)
+    batch = _MaskedBatch(mapping)
+    staged_dir = batch.stage_dir(os.path.dirname(dest))
     results = []
+    print(f"[掃描] 待檢查的受支援檔案：{len(files)} 個；只會發布已遮蔽結果")
     try:
-        for i, dst in enumerate(files, 1):
-            src = os.path.join(folder, os.path.relpath(dst, dest))
+        for i, source in enumerate(files, 1):
+            source = _safe_source(source)
             if progress:
-                progress(i, len(files), src)
-            try:
-                res = _scan_one(src, dst, mapping)
-            except Exception as e:
-                res = {"path": src, "output": None, "kind": "", "hits": 0, "labels": {},
-                       "error": str(e), "risk": "錯誤"}
-                print(f"[錯誤] {src}：{e}")
+                progress(i, len(files), source)
+            rel = os.path.relpath(source, folder)
+            if rel.startswith(".." + os.sep) or rel == ".." or os.path.isabs(rel):
+                raise SafeOutputError("不允許跨出來源資料夾的路徑")
+            candidate = os.path.join(staged_dir, rel)
+            destination = os.path.join(dest, rel)
+            ext = os.path.splitext(source)[1].lower()
+            name = os.path.basename(source)
+            res = {"path": source, "output": None, "kind": "", "hits": 0,
+                   "labels": {}, "error": None, "risk": "無"}
+            if ext in MEDIA_EXTENSIONS:
+                res["kind"] = "圖片/PDF"
+                entries = batch.stage_media(source, candidate, destination)
+                counts = Counter(e.get("label") or "UNKNOWN" for e in entries)
+                hits = len(entries)
+            elif ext in TABLE_EXTENSIONS:
+                res["kind"] = "表格"
+                report = batch.stage_table(source, candidate, destination, source_name=name)
+                counts = Counter(r[1] for r in report if len(r) > 1)
+                hits = len(report)
             else:
-                if res["output"]:
-                    print(f"[危險·{res['risk']}] {src}  ({res['kind']}，{res['hits']} 筆：{res['labels']})")
-                else:
-                    print(f"[安全] {src}")
+                res["kind"] = "程式碼" if ext in CODE_EXTENSIONS else "文字"
+                matches = batch.stage_text(source, candidate, destination,
+                                           is_code=(ext in CODE_EXTENSIONS), source_name=name)
+                counts = Counter(m[2] for m in matches)
+                hits = len(matches)
+            if os.path.isfile(candidate) and any(it[1] == candidate for it in batch.items):
+                res.update(output=destination, hits=hits, labels=dict(counts), risk=_risk_of(counts))
             results.append(res)
+        # 即使未偵測到 PII，也發布不含原始資料的空結果目錄，維持 GUI 回傳格式。
+        def publish():
+            # 同一檔案系統內的整目錄 rename：不會暴露一半完成的輸出。
+            if os.path.lexists(dest):
+                raise SafeOutputError("輸出資料夾已存在，拒絕覆蓋")
+            os.rename(staged_dir, dest)
+            batch.created.append(dest)
+            batch.tempdirs.remove(staged_dir)
+        batch.finish(publish)
+        print(f"[完成] 掃描與發布完成，已遮蔽檔案數：{sum(bool(r['output']) for r in results)}")
+        order = {"高": 0, "中": 1, "無": 2}
+        results.sort(key=lambda r: (order.get(r["risk"], 9), r["path"]))
+        return dest, results
+    except Exception as exc:
+        print("[失敗] 資料夾掃描中止；未發布不完整的資料夾")
+        raise SafeOutputError("資料夾掃描失敗，已拒絕發布本批次成果") from exc
     finally:
-        save_map(mapping)   # 整批處理完才寫一次對照表
-    order = {"高": 0, "中": 1, "錯誤": 2, "無": 3}
-    results.sort(key=lambda r: (order.get(r["risk"], 9), r["path"]))
-    return dest, results
-
+        batch.cleanup()
 
 def format_scan_report(results, dest=None):
     """把掃描結果整理成文字，給 log / 對話框用"""

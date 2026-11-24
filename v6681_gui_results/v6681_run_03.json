@@ -1,0 +1,73 @@
+{
+  "schema": "pii_v6681_gui_lag_single_mode_v1",
+  "status": "SINGLE_MODE_SYNTHETIC_SAFETY_PASS",
+  "mode": "hybrid",
+  "run_index": 3,
+  "synthetic_only": true,
+  "not_production_gui": true,
+  "production_files_changed": false,
+  "fixed_fixture_required": true,
+  "dual_zoom_kept": true,
+  "pdf_security_gate_executed": true,
+  "trial": {
+    "mode": "hybrid",
+    "return_code": 0,
+    "safe": true,
+    "reason": null,
+    "child_status": "COMPLETE",
+    "child_stage": "COMPLETE",
+    "preflight_pairs": 2,
+    "preflight_equal_pairs": 2,
+    "processing_s": 77.042,
+    "run_and_audit_s": 80.322,
+    "preflight_s": 31.779,
+    "child_elapsed_s": 146.53,
+    "worker_ocr_calls": 14,
+    "worker_ocr_wall_s": 41.788,
+    "text_regions_pass": 27,
+    "face_map_boxes_pass": 17,
+    "pdf_structure_pass": true,
+    "provider_evidence": {
+      "sessions": {
+        "det": 1,
+        "cls": 1,
+        "rec": 1
+      },
+      "node_events": {
+        "det_cuda": 3040,
+        "det_cpu": 0,
+        "cls_cpu": 8702,
+        "cls_cuda": 0,
+        "rec_cpu": 7410,
+        "rec_cuda": 0
+      },
+      "profiles_read": 3
+    }
+  },
+  "gui": {
+    "click_to_finish_s": 146.694,
+    "scheduled_interval_ms": 100,
+    "sample_count": 1346,
+    "max_lag_ms": 247.718,
+    "p50_lag_ms": 8.965,
+    "p95_lag_ms": 10.816,
+    "p99_lag_ms": 12.491,
+    "lag_count_above_ms": {
+      "100": 1,
+      "250": 0,
+      "500": 0,
+      "1000": 0
+    },
+    "largest_spikes": [
+      {
+        "relative_s": 125.256,
+        "observed_stage": "GPU_FULL_PDF",
+        "lag_ms": 247.718
+      }
+    ],
+    "observed_seconds": 146.694,
+    "responsiveness_review": "NO_OVER_500MS_SPIKE_OBSERVED"
+  },
+  "pdf_pixel_equality_checked_in_this_run": false,
+  "warning": "Single-mode isolated Tk test; NOT project ui.py. Single-mode PDF structural/text/face safety gate uses V6676. No CPU-vs-hybrid PDF pixel comparison in this single run. Stage association does not prove cause of Tk scheduling lag. Do not use real documents, model files or private PII."
+}

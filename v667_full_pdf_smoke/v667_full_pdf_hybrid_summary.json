@@ -1,0 +1,52 @@
+{
+  "schema": "pii_v667_full_pdf_ab_v1",
+  "status": "CHILD_FAILED",
+  "fixture_sha256_verified": true,
+  "only_synthetic_documents": true,
+  "production_environment_changed": false,
+  "production_code_modified": false,
+  "full_pdf_security_gate_executed": false,
+  "dual_zoom_kept": true,
+  "separate_gpu_worker": true,
+  "repeats": 1,
+  "pairs": [
+    {
+      "pair": 1,
+      "order": "AB",
+      "cpu": {
+        "mode": "cpu",
+        "return_code": 0,
+        "child_elapsed_s": 213.275,
+        "safe": true,
+        "reason": null,
+        "child_status": "COMPLETE",
+        "preflight_pairs": 0,
+        "preflight_equal_pairs": 0,
+        "processing_s": 182.285,
+        "run_and_audit_s": 185.511,
+        "preflight_s": null,
+        "worker_ocr_calls": 0,
+        "worker_ocr_wall_s": 0,
+        "text_regions_pass": 27,
+        "face_map_boxes_pass": 17,
+        "pdf_structure_pass": true
+      },
+      "hybrid": {
+        "mode": "hybrid",
+        "return_code": 3,
+        "child_elapsed_s": 31.098,
+        "safe": false,
+        "reason": "CHILD_FAILED",
+        "child_status": "CHILD_FAILED",
+        "preflight_pairs": 0,
+        "preflight_equal_pairs": 0,
+        "provider_evidence": {}
+      },
+      "pixel_identical": false
+    }
+  ],
+  "comparison": {
+    "status": "CHILD_FAILED"
+  },
+  "warning": "Preflight and model initialization excluded from processing_s. GUI untested."
+}

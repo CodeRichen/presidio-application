@@ -1,0 +1,173 @@
+{
+  "schema": "pii_v6674_adapter_diagnosis_v1",
+  "status": "OCR_ADAPTER_SCHEMA_MISMATCH",
+  "synthetic_fixture_sha256_verified": true,
+  "only_synthetic_documents": true,
+  "production_code_modified": false,
+  "production_environment_modified": false,
+  "full_pdf_security_gate_executed": false,
+  "probe": {
+    "return_code": 2,
+    "elapsed_s": 72.232,
+    "status": "OCR_ADAPTER_SCHEMA_MISMATCH",
+    "stage": "COMPLETE",
+    "error_type": null,
+    "pairs_checked": 2,
+    "pairs_equal": 0,
+    "provider_route_verified": true,
+    "pairs": [
+      {
+        "zoom": 2,
+        "mismatch_kind": "WORD_COUNT_DIFFERENCE",
+        "cpu_schema_ok": false,
+        "hybrid_schema_ok": true,
+        "ordered_text_equal_after_whitespace_removal": null,
+        "exact_adapter_equal": false,
+        "hypothesis": "CPU_ADAPTER_SCHEMA_INVALID",
+        "cpu": {
+          "word_count": 114,
+          "line_id_groups": 11,
+          "nonempty_word_count": 114,
+          "text_codepoints_total": 139,
+          "text_codepoints_without_whitespace": 139,
+          "words_with_internal_whitespace": 0,
+          "dict_rows": 114,
+          "non_dict_rows": 0,
+          "unexpected_field_rows": 114,
+          "unexpected_field_total": 114,
+          "text_string_rows": 114,
+          "line_id_valid_rows": 114,
+          "required_missing": {
+            "text": 0,
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0,
+            "line_id": 0
+          },
+          "required_wrong_type": {
+            "text": 0,
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0,
+            "line_id": 0
+          }
+        },
+        "hybrid": {
+          "word_count": 11,
+          "line_id_groups": 11,
+          "nonempty_word_count": 11,
+          "text_codepoints_total": 152,
+          "text_codepoints_without_whitespace": 139,
+          "words_with_internal_whitespace": 4,
+          "dict_rows": 11,
+          "non_dict_rows": 0,
+          "unexpected_field_rows": 0,
+          "unexpected_field_total": 0,
+          "text_string_rows": 11,
+          "line_id_valid_rows": 11,
+          "required_missing": {
+            "text": 0,
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0,
+            "line_id": 0
+          },
+          "required_wrong_type": {
+            "text": 0,
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0,
+            "line_id": 0
+          }
+        }
+      },
+      {
+        "zoom": 3,
+        "mismatch_kind": "WORD_COUNT_DIFFERENCE",
+        "cpu_schema_ok": false,
+        "hybrid_schema_ok": true,
+        "ordered_text_equal_after_whitespace_removal": null,
+        "exact_adapter_equal": false,
+        "hypothesis": "CPU_ADAPTER_SCHEMA_INVALID",
+        "cpu": {
+          "word_count": 115,
+          "line_id_groups": 11,
+          "nonempty_word_count": 115,
+          "text_codepoints_total": 139,
+          "text_codepoints_without_whitespace": 139,
+          "words_with_internal_whitespace": 0,
+          "dict_rows": 115,
+          "non_dict_rows": 0,
+          "unexpected_field_rows": 115,
+          "unexpected_field_total": 115,
+          "text_string_rows": 115,
+          "line_id_valid_rows": 115,
+          "required_missing": {
+            "text": 0,
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0,
+            "line_id": 0
+          },
+          "required_wrong_type": {
+            "text": 0,
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0,
+            "line_id": 0
+          }
+        },
+        "hybrid": {
+          "word_count": 11,
+          "line_id_groups": 11,
+          "nonempty_word_count": 11,
+          "text_codepoints_total": 153,
+          "text_codepoints_without_whitespace": 139,
+          "words_with_internal_whitespace": 4,
+          "dict_rows": 11,
+          "non_dict_rows": 0,
+          "unexpected_field_rows": 0,
+          "unexpected_field_total": 0,
+          "text_string_rows": 11,
+          "line_id_valid_rows": 11,
+          "required_missing": {
+            "text": 0,
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0,
+            "line_id": 0
+          },
+          "required_wrong_type": {
+            "text": 0,
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0,
+            "line_id": 0
+          }
+        }
+      }
+    ],
+    "provider_evidence": {
+      "sessions": {
+        "det": 1,
+        "cls": 1,
+        "rec": 1
+      },
+      "profiles_read": 3,
+      "det_cuda_node_events": 380,
+      "cls_cpu_node_events": 916,
+      "rec_cpu_node_events": 780,
+      "cls_cuda_node_events": 0,
+      "rec_cuda_node_events": 0
+    }
+  },
+  "warning": "Diagnostic only. No model, PII, face, final PDF or GUI speed acceptance."
+}

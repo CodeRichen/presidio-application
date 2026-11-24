@@ -1,0 +1,283 @@
+{
+  "schema": "pii_v652_torch_ab_v1",
+  "status": "PROMISING_AB_ONLY",
+  "fixture_sha256_verified": true,
+  "production_code_changed": false,
+  "only_synthetic_documents": true,
+  "dual_zoom_kept": true,
+  "temporary_private_maps_deleted_on_normal_exit": true,
+  "selected_threads": 4,
+  "repeats": 2,
+  "baseline": [
+    {
+      "trial_threads": 0,
+      "elapsed_s": 270.602,
+      "return_code": 0,
+      "safe": true,
+      "reason": null,
+      "torch_before": 14,
+      "torch_effective": 14,
+      "code_detect_calls": 278,
+      "code_detect_wall_s": 31.2191,
+      "code_detect_median_ms": 104.7421,
+      "ground_truth": {
+        "automated_pass": true,
+        "text_regions_pass": 27,
+        "text_regions_expected": 27,
+        "face_map_boxes_pass": 17,
+        "face_map_boxes_checked": 17,
+        "face_counts_needing_review": [],
+        "per_page_text_pass": [
+          3,
+          3,
+          3,
+          3,
+          6,
+          6,
+          3
+        ],
+        "per_page_face_map_counts": [
+          1,
+          1,
+          1,
+          1,
+          4,
+          8,
+          1
+        ],
+        "automated_status": "PASS_AUTOMATED",
+        "seconds": 183.497
+      },
+      "pdf_structure": {
+        "pages": 7,
+        "attachments": 0,
+        "text_chars": 0,
+        "annotations": 0,
+        "links": 0,
+        "widgets": 0,
+        "images_per_page": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "has_forms": false,
+        "eof_markers": 1,
+        "pass": true
+      },
+      "pdf_bytes": 20049832
+    },
+    {
+      "trial_threads": 0,
+      "elapsed_s": 211.136,
+      "return_code": 0,
+      "safe": true,
+      "reason": null,
+      "torch_before": 14,
+      "torch_effective": 14,
+      "code_detect_calls": 278,
+      "code_detect_wall_s": 30.6105,
+      "code_detect_median_ms": 104.8899,
+      "ground_truth": {
+        "automated_pass": true,
+        "text_regions_pass": 27,
+        "text_regions_expected": 27,
+        "face_map_boxes_pass": 17,
+        "face_map_boxes_checked": 17,
+        "face_counts_needing_review": [],
+        "per_page_text_pass": [
+          3,
+          3,
+          3,
+          3,
+          6,
+          6,
+          3
+        ],
+        "per_page_face_map_counts": [
+          1,
+          1,
+          1,
+          1,
+          4,
+          8,
+          1
+        ],
+        "automated_status": "PASS_AUTOMATED",
+        "seconds": 181.535
+      },
+      "pdf_structure": {
+        "pages": 7,
+        "attachments": 0,
+        "text_chars": 0,
+        "annotations": 0,
+        "links": 0,
+        "widgets": 0,
+        "images_per_page": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "has_forms": false,
+        "eof_markers": 1,
+        "pass": true
+      },
+      "pdf_bytes": 20049832
+    }
+  ],
+  "candidate": [
+    {
+      "trial_threads": 4,
+      "elapsed_s": 209.384,
+      "return_code": 0,
+      "safe": true,
+      "reason": null,
+      "torch_before": 14,
+      "torch_effective": 4,
+      "code_detect_calls": 278,
+      "code_detect_wall_s": 29.8656,
+      "code_detect_median_ms": 101.0941,
+      "ground_truth": {
+        "automated_pass": true,
+        "text_regions_pass": 27,
+        "text_regions_expected": 27,
+        "face_map_boxes_pass": 17,
+        "face_map_boxes_checked": 17,
+        "face_counts_needing_review": [],
+        "per_page_text_pass": [
+          3,
+          3,
+          3,
+          3,
+          6,
+          6,
+          3
+        ],
+        "per_page_face_map_counts": [
+          1,
+          1,
+          1,
+          1,
+          4,
+          8,
+          1
+        ],
+        "automated_status": "PASS_AUTOMATED",
+        "seconds": 180.102
+      },
+      "pdf_structure": {
+        "pages": 7,
+        "attachments": 0,
+        "text_chars": 0,
+        "annotations": 0,
+        "links": 0,
+        "widgets": 0,
+        "images_per_page": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "has_forms": false,
+        "eof_markers": 1,
+        "pass": true
+      },
+      "pdf_bytes": 20049832
+    },
+    {
+      "trial_threads": 4,
+      "elapsed_s": 209.462,
+      "return_code": 0,
+      "safe": true,
+      "reason": null,
+      "torch_before": 14,
+      "torch_effective": 4,
+      "code_detect_calls": 278,
+      "code_detect_wall_s": 31.0182,
+      "code_detect_median_ms": 103.5157,
+      "ground_truth": {
+        "automated_pass": true,
+        "text_regions_pass": 27,
+        "text_regions_expected": 27,
+        "face_map_boxes_pass": 17,
+        "face_map_boxes_checked": 17,
+        "face_counts_needing_review": [],
+        "per_page_text_pass": [
+          3,
+          3,
+          3,
+          3,
+          6,
+          6,
+          3
+        ],
+        "per_page_face_map_counts": [
+          1,
+          1,
+          1,
+          1,
+          4,
+          8,
+          1
+        ],
+        "automated_status": "PASS_AUTOMATED",
+        "seconds": 181.44
+      },
+      "pdf_structure": {
+        "pages": 7,
+        "attachments": 0,
+        "text_chars": 0,
+        "annotations": 0,
+        "links": 0,
+        "widgets": 0,
+        "images_per_page": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "has_forms": false,
+        "eof_markers": 1,
+        "pass": true
+      },
+      "pdf_bytes": 20049832
+    }
+  ],
+  "pixel_comparison": [
+    {
+      "pages_compared": 7,
+      "identical_pages": 7,
+      "all_identical": true
+    },
+    {
+      "pages_compared": 7,
+      "identical_pages": 7,
+      "all_identical": true
+    }
+  ],
+  "comparison": {
+    "status": "PROMISING_AB_ONLY",
+    "baseline_median_s": 240.869,
+    "candidate_median_s": 209.423,
+    "improvement_pct": 13.06,
+    "baseline_detect_median_s": 30.915,
+    "candidate_detect_median_s": 30.442,
+    "detect_improvement_pct": 1.53,
+    "threads": 4,
+    "samples_per_mode": 2
+  },
+  "note": "End-to-end measurement includes model initialization; GUI lag not measured."
+}

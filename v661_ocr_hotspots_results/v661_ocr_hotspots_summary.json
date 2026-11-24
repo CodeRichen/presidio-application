@@ -1,0 +1,988 @@
+{
+  "schema": "pii_v661_ocr_profile_ab_1",
+  "status": "PROFILE_OK_SINGLE",
+  "fixture_sha256_verified": true,
+  "production_code_changed": false,
+  "only_synthetic_documents": true,
+  "dual_zoom_kept": true,
+  "temporary_private_maps_deleted_on_normal_exit": true,
+  "repeats": 1,
+  "runs": [
+    {
+      "execution_ok": true,
+      "safe": true,
+      "elapsed_s": 209.817,
+      "reason": null,
+      "processing_s": 181.869,
+      "with_audit_s": 185.3552,
+      "pre_run_setup_s": 22.631,
+      "text_regions_pass": 27,
+      "face_boxes_pass": 17,
+      "pdf_structure_pass": true,
+      "profile": {
+        "schema": "pii_v661_ocr_profile_1",
+        "collections": [
+          {
+            "page": 1,
+            "zoom": 2.0,
+            "pdf_render_s": 0.1624,
+            "pixmap_to_pil_s": 0.0076,
+            "preprocess_s": 0.0843,
+            "ocr_backend_s": 11.1398,
+            "pii_boxes_s": 5.3238,
+            "other_collect_s": 0.0049,
+            "collect_total_s": 16.7229
+          },
+          {
+            "page": 1,
+            "zoom": 3.0,
+            "pdf_render_s": 0.1201,
+            "pixmap_to_pil_s": 0.0171,
+            "preprocess_s": 0.2049,
+            "ocr_backend_s": 11.6868,
+            "pii_boxes_s": 0.1145,
+            "other_collect_s": 0.0135,
+            "collect_total_s": 12.1569
+          },
+          {
+            "page": 2,
+            "zoom": 2.0,
+            "pdf_render_s": 0.1255,
+            "pixmap_to_pil_s": 0.0055,
+            "preprocess_s": 0.0787,
+            "ocr_backend_s": 7.9925,
+            "pii_boxes_s": 3.645,
+            "other_collect_s": 0.0049,
+            "collect_total_s": 11.8521
+          },
+          {
+            "page": 2,
+            "zoom": 3.0,
+            "pdf_render_s": 0.1168,
+            "pixmap_to_pil_s": 0.011,
+            "preprocess_s": 0.1659,
+            "ocr_backend_s": 10.8714,
+            "pii_boxes_s": 0.124,
+            "other_collect_s": 0.0091,
+            "collect_total_s": 11.2982
+          },
+          {
+            "page": 3,
+            "zoom": 2.0,
+            "pdf_render_s": 0.1356,
+            "pixmap_to_pil_s": 0.0052,
+            "preprocess_s": 0.075,
+            "ocr_backend_s": 8.1124,
+            "pii_boxes_s": 3.547,
+            "other_collect_s": 0.0045,
+            "collect_total_s": 11.8796
+          },
+          {
+            "page": 3,
+            "zoom": 3.0,
+            "pdf_render_s": 0.1166,
+            "pixmap_to_pil_s": 0.0111,
+            "preprocess_s": 0.1616,
+            "ocr_backend_s": 10.8933,
+            "pii_boxes_s": 0.156,
+            "other_collect_s": 0.0093,
+            "collect_total_s": 11.3479
+          },
+          {
+            "page": 4,
+            "zoom": 2.0,
+            "pdf_render_s": 0.1401,
+            "pixmap_to_pil_s": 0.0063,
+            "preprocess_s": 0.0773,
+            "ocr_backend_s": 8.167,
+            "pii_boxes_s": 3.5649,
+            "other_collect_s": 0.0049,
+            "collect_total_s": 11.9605
+          },
+          {
+            "page": 4,
+            "zoom": 3.0,
+            "pdf_render_s": 0.1172,
+            "pixmap_to_pil_s": 0.0112,
+            "preprocess_s": 0.1559,
+            "ocr_backend_s": 10.7781,
+            "pii_boxes_s": 0.5684,
+            "other_collect_s": 0.0089,
+            "collect_total_s": 11.6398
+          },
+          {
+            "page": 5,
+            "zoom": 2.0,
+            "pdf_render_s": 0.1544,
+            "pixmap_to_pil_s": 0.005,
+            "preprocess_s": 0.0783,
+            "ocr_backend_s": 8.3676,
+            "pii_boxes_s": 4.8849,
+            "other_collect_s": 0.0045,
+            "collect_total_s": 13.4947
+          },
+          {
+            "page": 5,
+            "zoom": 3.0,
+            "pdf_render_s": 0.1142,
+            "pixmap_to_pil_s": 0.0109,
+            "preprocess_s": 0.1663,
+            "ocr_backend_s": 11.0959,
+            "pii_boxes_s": 0.1232,
+            "other_collect_s": 0.0093,
+            "collect_total_s": 11.5198
+          },
+          {
+            "page": 6,
+            "zoom": 2.0,
+            "pdf_render_s": 0.1637,
+            "pixmap_to_pil_s": 0.005,
+            "preprocess_s": 0.0783,
+            "ocr_backend_s": 8.4948,
+            "pii_boxes_s": 5.5873,
+            "other_collect_s": 0.0042,
+            "collect_total_s": 14.3333
+          },
+          {
+            "page": 6,
+            "zoom": 3.0,
+            "pdf_render_s": 0.1171,
+            "pixmap_to_pil_s": 0.011,
+            "preprocess_s": 0.174,
+            "ocr_backend_s": 11.2054,
+            "pii_boxes_s": 0.931,
+            "other_collect_s": 0.0093,
+            "collect_total_s": 12.4478
+          },
+          {
+            "page": 7,
+            "zoom": 2.0,
+            "pdf_render_s": 0.1444,
+            "pixmap_to_pil_s": 0.0045,
+            "preprocess_s": 0.0829,
+            "ocr_backend_s": 7.9856,
+            "pii_boxes_s": 3.694,
+            "other_collect_s": 0.0042,
+            "collect_total_s": 11.9156
+          },
+          {
+            "page": 7,
+            "zoom": 3.0,
+            "pdf_render_s": 0.117,
+            "pixmap_to_pil_s": 0.011,
+            "preprocess_s": 0.1622,
+            "ocr_backend_s": 10.719,
+            "pii_boxes_s": 0.6658,
+            "other_collect_s": 0.0092,
+            "collect_total_s": 11.6843
+          }
+        ],
+        "by_zoom": {
+          "2x": {
+            "pdf_render": 1.0262,
+            "pixmap_to_pil": 0.0391,
+            "preprocess": 0.5548,
+            "ocr_backend": 60.2597,
+            "pii_boxes": 30.2469,
+            "other_collect": 0.032,
+            "collect_total": 92.1588,
+            "pages": 7,
+            "phase_calls": {
+              "pdf_render": 7,
+              "pixmap_to_pil": 7,
+              "preprocess": 7,
+              "ocr_backend": 7,
+              "pii_boxes": 7
+            }
+          },
+          "3x": {
+            "pdf_render": 0.8191,
+            "pixmap_to_pil": 0.0835,
+            "preprocess": 1.1909,
+            "ocr_backend": 77.2499,
+            "pii_boxes": 2.6828,
+            "other_collect": 0.0685,
+            "collect_total": 82.0947,
+            "pages": 7,
+            "phase_calls": {
+              "pdf_render": 7,
+              "pixmap_to_pil": 7,
+              "preprocess": 7,
+              "ocr_backend": 7,
+              "pii_boxes": 7
+            }
+          }
+        },
+        "scanned_pages": 7,
+        "scan_page_wall_s": 176.3171,
+        "merge_calls": 7,
+        "merge_wall_s": 0.0002,
+        "secure_export_calls": 1,
+        "secure_export_wall_s": 5.443,
+        "code_detect_calls": 278,
+        "code_detect_wall_s": 29.9065,
+        "presidio_matches_calls": 278,
+        "presidio_matches_wall_s": 2.9682,
+        "note": "PII is part of pii_boxes, not additive. code_detect and presidio are nested diagnostics; do not add to totals.",
+        "hotspots": {
+          "schema": "pii_v661_ocr_hotspots_1",
+          "sample_every_page": 2,
+          "calls_by_zoom": {
+            "2x": 7,
+            "3x": 7
+          },
+          "profiled_calls_by_zoom": {
+            "2x": 4,
+            "3x": 4
+          },
+          "sampled_ocr_wall_s_by_zoom": {
+            "2x": 35.6063,
+            "3x": 44.3959
+          },
+          "top_self_time": [
+            {
+              "module_file": "onnxruntime_inference_collection.py",
+              "function": "run",
+              "calls": 35,
+              "self_s": 39.295858,
+              "cumulative_s": 127.435364,
+              "category": "onnxruntime"
+            },
+            {
+              "module_file": "main.py",
+              "function": "__call__",
+              "calls": 8,
+              "self_s": 33.492686,
+              "cumulative_s": 72.244218,
+              "category": "other"
+            },
+            {
+              "module_file": "utils.py",
+              "function": "normalize",
+              "calls": 8,
+              "self_s": 1.115943,
+              "cumulative_s": 1.249682,
+              "category": "other"
+            },
+            {
+              "module_file": "onnxruntime_inference_collection.py",
+              "function": "_create_inference_session",
+              "calls": 3,
+              "self_s": 0.808389,
+              "cumulative_s": 0.83016,
+              "category": "onnxruntime"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<method 'astype' of 'numpy.ndarray' objects>",
+              "calls": 652,
+              "self_s": 0.327179,
+              "cumulative_s": 0.327179,
+              "category": "numpy"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<built-in method _io.open_code>",
+              "calls": 184,
+              "self_s": 0.158158,
+              "cumulative_s": 0.158158,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<built-in method builtins.isinstance>",
+              "calls": 506121,
+              "self_s": 0.154677,
+              "cumulative_s": 0.266993,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<built-in method _imp.exec_dynamic>",
+              "calls": 6,
+              "self_s": 0.137097,
+              "cumulative_s": 0.139543,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+              "calls": 10018,
+              "self_s": 0.118976,
+              "cumulative_s": 0.118976,
+              "category": "numpy"
+            },
+            {
+              "module_file": "main.py",
+              "function": "order_points",
+              "calls": 972,
+              "self_s": 0.105226,
+              "cumulative_s": 0.23426,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<method 'argmax' of 'numpy.ndarray' objects>",
+              "calls": 36,
+              "self_s": 0.093247,
+              "cumulative_s": 0.093247,
+              "category": "numpy"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<resize>",
+              "calls": 300,
+              "self_s": 0.086,
+              "cumulative_s": 0.086,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<built-in method nt.stat>",
+              "calls": 923,
+              "self_s": 0.077114,
+              "cumulative_s": 0.077583,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<built-in method numpy.array>",
+              "calls": 6722,
+              "self_s": 0.076642,
+              "cumulative_s": 0.205267,
+              "category": "numpy"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<method 'encode' of 'ImagingEncoder' objects>",
+              "calls": 1592,
+              "self_s": 0.062813,
+              "cumulative_s": 0.062813,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<warpPerspective>",
+              "calls": 96,
+              "self_s": 0.060301,
+              "cumulative_s": 0.060301,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen importlib._bootstrap>",
+              "function": "_handle_fromlist",
+              "calls": 54699,
+              "self_s": 0.057516,
+              "cumulative_s": 1.95017,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<built-in method _abc._abc_instancecheck>",
+              "calls": 121827,
+              "self_s": 0.057161,
+              "cumulative_s": 0.058835,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen abc>",
+              "function": "__instancecheck__",
+              "calls": 121827,
+              "self_s": 0.053482,
+              "cumulative_s": 0.112316,
+              "category": "other"
+            },
+            {
+              "module_file": "main.py",
+              "function": "reverse_rotate_crop_image",
+              "calls": 96,
+              "self_s": 0.045905,
+              "cumulative_s": 0.30002,
+              "category": "other"
+            }
+          ],
+          "top_cumulative_time": [
+            {
+              "module_file": "onnxruntime_inference_collection.py",
+              "function": "run",
+              "calls": 35,
+              "self_s": 39.295858,
+              "cumulative_s": 127.435364,
+              "category": "onnxruntime"
+            },
+            {
+              "module_file": "main.py",
+              "function": "__call__",
+              "calls": 31,
+              "self_s": 0.000397,
+              "cumulative_s": 118.727787,
+              "category": "other"
+            },
+            {
+              "module_file": "main.py",
+              "function": "detect_and_crop",
+              "calls": 8,
+              "self_s": 0.031844,
+              "cumulative_s": 72.489404,
+              "category": "other"
+            },
+            {
+              "module_file": "main.py",
+              "function": "__call__",
+              "calls": 8,
+              "self_s": 33.492686,
+              "cumulative_s": 72.244218,
+              "category": "other"
+            },
+            {
+              "module_file": "main.py",
+              "function": "__call__",
+              "calls": 6,
+              "self_s": 0.000194,
+              "cumulative_s": 55.495348,
+              "category": "other"
+            },
+            {
+              "module_file": "main.py",
+              "function": "cls_and_rotate",
+              "calls": 5,
+              "self_s": 0.000119,
+              "cumulative_s": 45.415076,
+              "category": "other"
+            },
+            {
+              "module_file": "main.py",
+              "function": "__init__",
+              "calls": 2,
+              "self_s": 8.3e-05,
+              "cumulative_s": 10.449199,
+              "category": "other"
+            },
+            {
+              "module_file": "main.py",
+              "function": "_load_det_model",
+              "calls": 8,
+              "self_s": 5.2e-05,
+              "cumulative_s": 2.399674,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen importlib._bootstrap>",
+              "function": "_find_and_load",
+              "calls": 224,
+              "self_s": 0.004509,
+              "cumulative_s": 2.140876,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen importlib._bootstrap>",
+              "function": "_find_and_load_unlocked",
+              "calls": 221,
+              "self_s": 0.0015,
+              "cumulative_s": 2.139873,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen importlib._bootstrap>",
+              "function": "_load_unlocked",
+              "calls": 209,
+              "self_s": 0.00105,
+              "cumulative_s": 2.129406,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen importlib._bootstrap_external>",
+              "function": "exec_module",
+              "calls": 184,
+              "self_s": 0.000824,
+              "cumulative_s": 2.12876,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen importlib._bootstrap>",
+              "function": "_call_with_frames_removed",
+              "calls": 444,
+              "self_s": 0.000915,
+              "cumulative_s": 2.112496,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<built-in method builtins.exec>",
+              "calls": 225,
+              "self_s": 0.007275,
+              "cumulative_s": 2.108424,
+              "category": "other"
+            },
+            {
+              "module_file": "__init__.py",
+              "function": "import_module",
+              "calls": 31,
+              "self_s": 8.5e-05,
+              "cumulative_s": 2.10076,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen importlib._bootstrap>",
+              "function": "_gcd_import",
+              "calls": 31,
+              "self_s": 7.1e-05,
+              "cumulative_s": 2.10074,
+              "category": "other"
+            },
+            {
+              "module_file": "ocr_backend.py",
+              "function": "_rapid_engine",
+              "calls": 8,
+              "self_s": 4.3e-05,
+              "cumulative_s": 2.028786,
+              "category": "other"
+            },
+            {
+              "module_file": "<frozen importlib._bootstrap>",
+              "function": "_handle_fromlist",
+              "calls": 54699,
+              "self_s": 0.057516,
+              "cumulative_s": 1.95017,
+              "category": "other"
+            },
+            {
+              "module_file": "<builtin>",
+              "function": "<built-in method builtins.hasattr>",
+              "calls": 80901,
+              "self_s": 0.025181,
+              "cumulative_s": 1.932206,
+              "category": "other"
+            },
+            {
+              "module_file": "__init__.py",
+              "function": "__getattr__",
+              "calls": 2,
+              "self_s": 5e-06,
+              "cumulative_s": 1.928912,
+              "category": "other"
+            }
+          ],
+          "self_time_by_category_s": {
+            "numpy": 0.65147,
+            "onnxruntime": 40.1052,
+            "opencv": 1e-05,
+            "other": 37.91741,
+            "pillow": 0.00546,
+            "rapidocr": 4e-05
+          },
+          "unique_static_functions": 1919,
+          "warning": "cProfile adds overhead. Cumulative times overlap. Native inference work may not split into detection/recognition. No OCR text or images saved."
+        },
+        "pre_run_setup_s": 22.631,
+        "fixture_plus_audit_s": 185.3552,
+        "fixture_processing_s": 181.869
+      }
+    }
+  ],
+  "pixel_comparison": [],
+  "summary": {
+    "backend_hotspots": {
+      "schema": "pii_v661_ocr_hotspots_1",
+      "sample_every_page": 2,
+      "calls_by_zoom": {
+        "2x": 7,
+        "3x": 7
+      },
+      "profiled_calls_by_zoom": {
+        "2x": 4,
+        "3x": 4
+      },
+      "sampled_ocr_wall_s_by_zoom": {
+        "2x": 35.6063,
+        "3x": 44.3959
+      },
+      "top_self_time": [
+        {
+          "module_file": "onnxruntime_inference_collection.py",
+          "function": "run",
+          "calls": 35,
+          "self_s": 39.295858,
+          "cumulative_s": 127.435364,
+          "category": "onnxruntime"
+        },
+        {
+          "module_file": "main.py",
+          "function": "__call__",
+          "calls": 8,
+          "self_s": 33.492686,
+          "cumulative_s": 72.244218,
+          "category": "other"
+        },
+        {
+          "module_file": "utils.py",
+          "function": "normalize",
+          "calls": 8,
+          "self_s": 1.115943,
+          "cumulative_s": 1.249682,
+          "category": "other"
+        },
+        {
+          "module_file": "onnxruntime_inference_collection.py",
+          "function": "_create_inference_session",
+          "calls": 3,
+          "self_s": 0.808389,
+          "cumulative_s": 0.83016,
+          "category": "onnxruntime"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<method 'astype' of 'numpy.ndarray' objects>",
+          "calls": 652,
+          "self_s": 0.327179,
+          "cumulative_s": 0.327179,
+          "category": "numpy"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<built-in method _io.open_code>",
+          "calls": 184,
+          "self_s": 0.158158,
+          "cumulative_s": 0.158158,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 506121,
+          "self_s": 0.154677,
+          "cumulative_s": 0.266993,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<built-in method _imp.exec_dynamic>",
+          "calls": 6,
+          "self_s": 0.137097,
+          "cumulative_s": 0.139543,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+          "calls": 10018,
+          "self_s": 0.118976,
+          "cumulative_s": 0.118976,
+          "category": "numpy"
+        },
+        {
+          "module_file": "main.py",
+          "function": "order_points",
+          "calls": 972,
+          "self_s": 0.105226,
+          "cumulative_s": 0.23426,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<method 'argmax' of 'numpy.ndarray' objects>",
+          "calls": 36,
+          "self_s": 0.093247,
+          "cumulative_s": 0.093247,
+          "category": "numpy"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<resize>",
+          "calls": 300,
+          "self_s": 0.086,
+          "cumulative_s": 0.086,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<built-in method nt.stat>",
+          "calls": 923,
+          "self_s": 0.077114,
+          "cumulative_s": 0.077583,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<built-in method numpy.array>",
+          "calls": 6722,
+          "self_s": 0.076642,
+          "cumulative_s": 0.205267,
+          "category": "numpy"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<method 'encode' of 'ImagingEncoder' objects>",
+          "calls": 1592,
+          "self_s": 0.062813,
+          "cumulative_s": 0.062813,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<warpPerspective>",
+          "calls": 96,
+          "self_s": 0.060301,
+          "cumulative_s": 0.060301,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen importlib._bootstrap>",
+          "function": "_handle_fromlist",
+          "calls": 54699,
+          "self_s": 0.057516,
+          "cumulative_s": 1.95017,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<built-in method _abc._abc_instancecheck>",
+          "calls": 121827,
+          "self_s": 0.057161,
+          "cumulative_s": 0.058835,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen abc>",
+          "function": "__instancecheck__",
+          "calls": 121827,
+          "self_s": 0.053482,
+          "cumulative_s": 0.112316,
+          "category": "other"
+        },
+        {
+          "module_file": "main.py",
+          "function": "reverse_rotate_crop_image",
+          "calls": 96,
+          "self_s": 0.045905,
+          "cumulative_s": 0.30002,
+          "category": "other"
+        }
+      ],
+      "top_cumulative_time": [
+        {
+          "module_file": "onnxruntime_inference_collection.py",
+          "function": "run",
+          "calls": 35,
+          "self_s": 39.295858,
+          "cumulative_s": 127.435364,
+          "category": "onnxruntime"
+        },
+        {
+          "module_file": "main.py",
+          "function": "__call__",
+          "calls": 31,
+          "self_s": 0.000397,
+          "cumulative_s": 118.727787,
+          "category": "other"
+        },
+        {
+          "module_file": "main.py",
+          "function": "detect_and_crop",
+          "calls": 8,
+          "self_s": 0.031844,
+          "cumulative_s": 72.489404,
+          "category": "other"
+        },
+        {
+          "module_file": "main.py",
+          "function": "__call__",
+          "calls": 8,
+          "self_s": 33.492686,
+          "cumulative_s": 72.244218,
+          "category": "other"
+        },
+        {
+          "module_file": "main.py",
+          "function": "__call__",
+          "calls": 6,
+          "self_s": 0.000194,
+          "cumulative_s": 55.495348,
+          "category": "other"
+        },
+        {
+          "module_file": "main.py",
+          "function": "cls_and_rotate",
+          "calls": 5,
+          "self_s": 0.000119,
+          "cumulative_s": 45.415076,
+          "category": "other"
+        },
+        {
+          "module_file": "main.py",
+          "function": "__init__",
+          "calls": 2,
+          "self_s": 8.3e-05,
+          "cumulative_s": 10.449199,
+          "category": "other"
+        },
+        {
+          "module_file": "main.py",
+          "function": "_load_det_model",
+          "calls": 8,
+          "self_s": 5.2e-05,
+          "cumulative_s": 2.399674,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen importlib._bootstrap>",
+          "function": "_find_and_load",
+          "calls": 224,
+          "self_s": 0.004509,
+          "cumulative_s": 2.140876,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen importlib._bootstrap>",
+          "function": "_find_and_load_unlocked",
+          "calls": 221,
+          "self_s": 0.0015,
+          "cumulative_s": 2.139873,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen importlib._bootstrap>",
+          "function": "_load_unlocked",
+          "calls": 209,
+          "self_s": 0.00105,
+          "cumulative_s": 2.129406,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen importlib._bootstrap_external>",
+          "function": "exec_module",
+          "calls": 184,
+          "self_s": 0.000824,
+          "cumulative_s": 2.12876,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen importlib._bootstrap>",
+          "function": "_call_with_frames_removed",
+          "calls": 444,
+          "self_s": 0.000915,
+          "cumulative_s": 2.112496,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<built-in method builtins.exec>",
+          "calls": 225,
+          "self_s": 0.007275,
+          "cumulative_s": 2.108424,
+          "category": "other"
+        },
+        {
+          "module_file": "__init__.py",
+          "function": "import_module",
+          "calls": 31,
+          "self_s": 8.5e-05,
+          "cumulative_s": 2.10076,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen importlib._bootstrap>",
+          "function": "_gcd_import",
+          "calls": 31,
+          "self_s": 7.1e-05,
+          "cumulative_s": 2.10074,
+          "category": "other"
+        },
+        {
+          "module_file": "ocr_backend.py",
+          "function": "_rapid_engine",
+          "calls": 8,
+          "self_s": 4.3e-05,
+          "cumulative_s": 2.028786,
+          "category": "other"
+        },
+        {
+          "module_file": "<frozen importlib._bootstrap>",
+          "function": "_handle_fromlist",
+          "calls": 54699,
+          "self_s": 0.057516,
+          "cumulative_s": 1.95017,
+          "category": "other"
+        },
+        {
+          "module_file": "<builtin>",
+          "function": "<built-in method builtins.hasattr>",
+          "calls": 80901,
+          "self_s": 0.025181,
+          "cumulative_s": 1.932206,
+          "category": "other"
+        },
+        {
+          "module_file": "__init__.py",
+          "function": "__getattr__",
+          "calls": 2,
+          "self_s": 5e-06,
+          "cumulative_s": 1.928912,
+          "category": "other"
+        }
+      ],
+      "self_time_by_category_s": {
+        "numpy": 0.65147,
+        "onnxruntime": 40.1052,
+        "opencv": 1e-05,
+        "other": 37.91741,
+        "pillow": 0.00546,
+        "rapidocr": 4e-05
+      },
+      "unique_static_functions": 1919,
+      "warning": "cProfile adds overhead. Cumulative times overlap. Native inference work may not split into detection/recognition. No OCR text or images saved."
+    },
+    "processing_median_s": 181.869,
+    "collect_median_s": 174.254,
+    "export_median_s": 5.443,
+    "other_processing_approx_s": 2.172,
+    "by_zoom": {
+      "2x": {
+        "pdf_render_median_s": 1.0262,
+        "pixmap_to_pil_median_s": 0.0391,
+        "preprocess_median_s": 0.5548,
+        "ocr_backend_median_s": 60.2597,
+        "pii_boxes_median_s": 30.2469,
+        "other_collect_median_s": 0.032,
+        "collect_total_median_s": 92.1588
+      },
+      "3x": {
+        "pdf_render_median_s": 0.8191,
+        "pixmap_to_pil_median_s": 0.0835,
+        "preprocess_median_s": 1.1909,
+        "ocr_backend_median_s": 77.2499,
+        "pii_boxes_median_s": 2.6828,
+        "other_collect_median_s": 0.0685,
+        "collect_total_median_s": 82.0947
+      }
+    },
+    "phases": {
+      "pdf_render": {
+        "median_approx_s": 1.845,
+        "share_of_collect_pct": 1.06
+      },
+      "pixmap_to_pil": {
+        "median_approx_s": 0.123,
+        "share_of_collect_pct": 0.07
+      },
+      "preprocess": {
+        "median_approx_s": 1.746,
+        "share_of_collect_pct": 1.0
+      },
+      "ocr_backend": {
+        "median_approx_s": 137.51,
+        "share_of_collect_pct": 78.91
+      },
+      "pii_boxes": {
+        "median_approx_s": 32.93,
+        "share_of_collect_pct": 18.9
+      },
+      "other_collect": {
+        "median_approx_s": 0.101,
+        "share_of_collect_pct": 0.06
+      }
+    },
+    "dominant_collect_phase": "ocr_backend"
+  },
+  "warning": "Profiling only; no production speedup claimed; GUI untested."
+}

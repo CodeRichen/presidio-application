@@ -1,0 +1,145 @@
+{
+  "schema": "masked_pdf_save_v4_ab_1",
+  "page_count": 7,
+  "dpi": 200,
+  "repeats": 3,
+  "mode_options": {
+    "baseline": {
+      "garbage": 4,
+      "deflate": true,
+      "clean": true,
+      "incremental": false
+    },
+    "no_clean": {
+      "garbage": 4,
+      "deflate": true,
+      "clean": false,
+      "incremental": false
+    },
+    "no_gc_clean": {
+      "garbage": 0,
+      "deflate": true,
+      "clean": false,
+      "incremental": false
+    },
+    "no_deflate": {
+      "garbage": 0,
+      "deflate": false,
+      "clean": false,
+      "incremental": false
+    }
+  },
+  "summary": {
+    "baseline": {
+      "average_save_s": 2.69135,
+      "median_save_s": 3.14539,
+      "average_size_mb": 19.103,
+      "passed": 3
+    },
+    "no_clean": {
+      "average_save_s": 2.77161,
+      "median_save_s": 3.28415,
+      "average_size_mb": 19.103,
+      "passed": 3
+    },
+    "no_gc_clean": {
+      "average_save_s": 3.29862,
+      "median_save_s": 3.36546,
+      "average_size_mb": 19.103,
+      "passed": 3
+    },
+    "no_deflate": {
+      "average_save_s": 0.07654,
+      "median_save_s": 0.08245,
+      "average_size_mb": 95.278,
+      "passed": 3
+    }
+  },
+  "runs": [
+    {
+      "repeat": 1,
+      "mode": "baseline",
+      "save_s": 1.70048,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 1,
+      "mode": "no_clean",
+      "save_s": 1.7229,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 1,
+      "mode": "no_gc_clean",
+      "save_s": 3.36546,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 1,
+      "mode": "no_deflate",
+      "save_s": 0.08245,
+      "size_bytes": 99906723,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 2,
+      "mode": "no_deflate",
+      "save_s": 0.09565,
+      "size_bytes": 99906723,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 2,
+      "mode": "no_gc_clean",
+      "save_s": 3.44796,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 2,
+      "mode": "no_clean",
+      "save_s": 3.30778,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 2,
+      "mode": "baseline",
+      "save_s": 3.14539,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 3,
+      "mode": "baseline",
+      "save_s": 3.22817,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 3,
+      "mode": "no_clean",
+      "save_s": 3.28415,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 3,
+      "mode": "no_gc_clean",
+      "save_s": 3.08243,
+      "size_bytes": 20030857,
+      "security_and_pixels": "PASS"
+    },
+    {
+      "repeat": 3,
+      "mode": "no_deflate",
+      "save_s": 0.05152,
+      "size_bytes": 99906723,
+      "security_and_pixels": "PASS"
+    }
+  ],
+  "note": "Experiment on an already masked PDF only; does not benchmark OCR or GUI latency. Verified outputs are deleted. Saving changes require full PII and security regression before deployment."
+}

@@ -1,0 +1,34 @@
+{
+  "primary_boxes": 7,
+  "fallback_boxes": 8,
+  "additional_3x_boxes": [
+    {
+      "page": 6,
+      "label": "PERSON",
+      "source_type": "OTHER",
+      "bbox_percent_xyxy": [
+        23.59,
+        51.03,
+        25.65,
+        53.12
+      ],
+      "score": 0.85,
+      "overlap_known_text_label": null,
+      "overlap_known_text_fraction_of_smaller": 0.0,
+      "max_overlap_with_any_2x_box": 0.0,
+      "review": "MANUAL_REVIEW_REQUIRED"
+    }
+  ],
+  "additional_count": 1,
+  "primary_ocr_s": 17.357,
+  "fallback_ocr_s": 13.402,
+  "schema": "pii_v61_ocr_extra_v1",
+  "status": "MANUAL_REVIEW_REQUIRED",
+  "fixture_sha256_verified": true,
+  "production_code_changed": false,
+  "page": 6,
+  "expected_previous_v6_additions": 1,
+  "count_consistent_with_v6": true,
+  "report_contains_original_ocr_values": false,
+  "guidance": "Keep dual 2x+3x OCR until additional regions are reviewed and broader independent Ground Truth is available."
+}

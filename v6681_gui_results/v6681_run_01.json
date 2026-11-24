@@ -1,0 +1,33 @@
+{
+  "schema": "pii_v6681_gui_lag_single_mode_v1",
+  "status": "IDLE_GUI_MEASURED",
+  "mode": "idle",
+  "run_index": 1,
+  "synthetic_only": true,
+  "not_production_gui": true,
+  "production_files_changed": false,
+  "fixed_fixture_required": true,
+  "dual_zoom_kept": false,
+  "pdf_security_gate_executed": false,
+  "trial": null,
+  "gui": {
+    "click_to_finish_s": 30.127,
+    "scheduled_interval_ms": 100,
+    "sample_count": 277,
+    "max_lag_ms": 13.927,
+    "p50_lag_ms": 9.009,
+    "p95_lag_ms": 10.559,
+    "p99_lag_ms": 13.01,
+    "lag_count_above_ms": {
+      "100": 0,
+      "250": 0,
+      "500": 0,
+      "1000": 0
+    },
+    "largest_spikes": [],
+    "observed_seconds": 30.127,
+    "responsiveness_review": "NO_OVER_500MS_SPIKE_OBSERVED"
+  },
+  "pdf_pixel_equality_checked_in_this_run": false,
+  "warning": "Single-mode isolated Tk test; NOT project ui.py. Single-mode PDF structural/text/face safety gate uses V6676. No CPU-vs-hybrid PDF pixel comparison in this single run. Stage association does not prove cause of Tk scheduling lag. Do not use real documents, model files or private PII."
+}

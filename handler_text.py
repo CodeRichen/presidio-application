@@ -461,3 +461,52 @@ def zh_ner(text: str):
 NLP_MODELS['zh'] = zh_ner
 MODEL_STATUS.append('[設定] 中文 NER：團隊 CLUENER(A) + C + Repeat；C 長文模式由 PII_C_LONG_MODE 控制')
 # --- END AC_REPEATED_NAME_PLUGIN ---
+
+# BEGIN PII_ZH_SINGLE_PASS_COMPAT_V2_TEXT
+# Same-call memoization: does not change the original NER model or filters.
+# Sensitive text is retained only within a detect_matches() call.
+import contextvars as _pii_zh_sp_cv
+import functools as _pii_zh_sp_ft
+
+_pii_zh_sp_context = _pii_zh_sp_cv.ContextVar('pii_zh_sp_v2', default=None)
+_pii_zh_sp_original = zh_ner
+
+
+def _pii_zh_sp_enabled():
+    return os.environ.get('PII_ZH_SINGLE_PASS', '1').strip().lower() not in {
+        '0', 'off', 'false', 'no'
+    }
+
+
+@_pii_zh_sp_ft.wraps(_pii_zh_sp_original)
+def _pii_zh_sp_shared(text, *args, **kwargs):
+    cache = _pii_zh_sp_context.get()
+    if cache is None or args or kwargs or not isinstance(text, str):
+        return _pii_zh_sp_original(text, *args, **kwargs)
+    if text in cache:
+        return list(cache[text])
+    matches = _pii_zh_sp_original(text)
+    cache[text] = tuple(matches)
+    return list(matches)
+
+
+def _pii_zh_sp_scope(function):
+    @_pii_zh_sp_ft.wraps(function)
+    def wrapper(*args, **kwargs):
+        if not _pii_zh_sp_enabled() or _pii_zh_sp_context.get() is not None:
+            return function(*args, **kwargs)
+        cache = {}
+        token = _pii_zh_sp_context.set(cache)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _pii_zh_sp_context.reset(token)
+            cache.clear()
+    return wrapper
+
+# Only redirect the registration if it was already pointing at the SAME original
+# zh_ner function. If a project intentionally uses a distinct model, preserve it.
+if NLP_MODELS.get('zh') is _pii_zh_sp_original:
+    NLP_MODELS['zh'] = _pii_zh_sp_shared
+zh_ner = _pii_zh_sp_shared
+# END PII_ZH_SINGLE_PASS_COMPAT_V2_TEXT
