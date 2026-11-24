@@ -1,0 +1,18 @@
+{
+  "schema": "pii_v6671_diagnosis_v1",
+  "status": "GPU_WORKER_INITIALIZATION_NEEDS_DIAGNOSIS",
+  "synthetic_fixture_sha256_verified": true,
+  "full_pdf_security_gate_executed": false,
+  "production_environment_modified": false,
+  "production_code_modified": false,
+  "gpu_probe": {
+    "return_code": 2,
+    "elapsed_s": 1.666,
+    "status": "INCOMPLETE_MODEL_SESSIONS",
+    "stage": "RAPIDOCR_CONSTRUCT",
+    "error_type": null,
+    "provider_verified": false
+  },
+  "adapter_probe": {},
+  "warning": "Diagnostic only. Never use with real documents; no acceleration claim."
+}

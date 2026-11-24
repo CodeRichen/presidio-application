@@ -1,0 +1,302 @@
+{
+  "description": "Independent manual-GT face-region black-pixel coverage audit",
+  "original_pdf_filename": "pii_face_7page_scan_source.pdf",
+  "original_pdf_sha256": "df9362afb18880000ce85290e9055dd798126c16351c5cbd306e4e9f4b160b49",
+  "masked_pdf_filename": "test_7page_masked.pdf",
+  "masked_pdf_sha256": "d597eb80a1572a8efabaa39bb5dea3d79cb5e90ee6df03364220619b68e0fc21",
+  "ground_truth_filename": "face_ground_truth.json",
+  "settings": {
+    "render_zoom": 2.0,
+    "black_pixel_threshold_rgb_max": 55,
+    "minimum_black_coverage": 0.98,
+    "coordinate_system": "PDF points; top-left origin; [x0,y0,x1,y1]",
+    "edge_policy": "pixel centers within annotated rectangle; outside-edge pixels ignored"
+  },
+  "totals": {
+    "ground_truth_faces": 17,
+    "faces_passed": 17,
+    "faces_failed": 0,
+    "pass_rate": 1.0,
+    "lowest_face_black_pixel_coverage": 1.0,
+    "overall_pass": true
+  },
+  "pages": [
+    {
+      "page": 1,
+      "gt_faces": 1,
+      "passed": 1,
+      "faces": [
+        {
+          "face_index": 1,
+          "bbox_pt": [
+            59.13,
+            31.304,
+            314.783,
+            386.087
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 361590,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "gt_faces": 1,
+      "passed": 1,
+      "faces": [
+        {
+          "face_index": 1,
+          "bbox_pt": [
+            192.174,
+            288.696,
+            289.565,
+            414.783
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 48694,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "gt_faces": 1,
+      "passed": 1,
+      "faces": [
+        {
+          "face_index": 1,
+          "bbox_pt": [
+            196.522,
+            80.87,
+            435.652,
+            464.348
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 365382,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "gt_faces": 1,
+      "passed": 1,
+      "faces": [
+        {
+          "face_index": 1,
+          "bbox_pt": [
+            206.957,
+            132.174,
+            438.261,
+            477.391
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 318318,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "page": 5,
+      "gt_faces": 4,
+      "passed": 4,
+      "faces": [
+        {
+          "face_index": 1,
+          "bbox_pt": [
+            132.174,
+            153.913,
+            183.478,
+            223.478
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 13938,
+          "passed": true
+        },
+        {
+          "face_index": 2,
+          "bbox_pt": [
+            192.174,
+            198.261,
+            255.652,
+            268.696
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 17640,
+          "passed": true
+        },
+        {
+          "face_index": 3,
+          "bbox_pt": [
+            204.348,
+            100.87,
+            260.0,
+            161.739
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 13431,
+          "passed": true
+        },
+        {
+          "face_index": 4,
+          "bbox_pt": [
+            321.739,
+            140.0,
+            373.043,
+            206.087
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 13464,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "page": 6,
+      "gt_faces": 8,
+      "passed": 8,
+      "faces": [
+        {
+          "face_index": 1,
+          "bbox_pt": [
+            128.696,
+            218.261,
+            160.87,
+            258.261
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 4977,
+          "passed": true
+        },
+        {
+          "face_index": 2,
+          "bbox_pt": [
+            191.304,
+            304.348,
+            221.739,
+            345.217
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 4860,
+          "passed": true
+        },
+        {
+          "face_index": 3,
+          "bbox_pt": [
+            230.435,
+            282.609,
+            266.087,
+            324.348
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 5822,
+          "passed": true
+        },
+        {
+          "face_index": 4,
+          "bbox_pt": [
+            201.739,
+            233.043,
+            225.217,
+            268.696
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 3220,
+          "passed": true
+        },
+        {
+          "face_index": 5,
+          "bbox_pt": [
+            235.652,
+            233.043,
+            265.217,
+            265.217
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 3654,
+          "passed": true
+        },
+        {
+          "face_index": 6,
+          "bbox_pt": [
+            288.696,
+            229.565,
+            317.391,
+            266.957
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 4088,
+          "passed": true
+        },
+        {
+          "face_index": 7,
+          "bbox_pt": [
+            303.478,
+            273.913,
+            341.739,
+            317.391
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 6536,
+          "passed": true
+        },
+        {
+          "face_index": 8,
+          "bbox_pt": [
+            332.174,
+            206.957,
+            364.348,
+            247.826
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 5103,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "page": 7,
+      "gt_faces": 1,
+      "passed": 1,
+      "faces": [
+        {
+          "face_index": 1,
+          "bbox_pt": [
+            145.217,
+            149.565,
+            345.217,
+            439.13
+          ],
+          "black_pixel_coverage": 1.0,
+          "new_black_coverage_of_original_nonblack_pixels": 1.0,
+          "pixel_count": 230622,
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Measures black pixels within independent annotated face rectangles, not detector Precision/Recall.",
+    "A high black fraction does not guarantee removal of every identifying facial feature; visually review all 7 pages.",
+    "Naturally dark pixels can satisfy black-pixel tests; secondary comparison against original nonblack pixels is reported.",
+    "This does not inspect recoverable source content in hidden PDF objects, metadata, or the separate media de-identification map.",
+    "Results apply only to this particular manually annotated PDF and masked output."
+  ]
+}

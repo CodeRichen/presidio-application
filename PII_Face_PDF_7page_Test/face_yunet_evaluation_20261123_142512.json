@@ -1,0 +1,368 @@
+{
+  "description": "Offline YuNet raw-detection evaluation against independent PDF-point GT",
+  "original_pdf_filename": "pii_face_7page_scan_source.pdf",
+  "original_pdf_sha256": "df9362afb18880000ce85290e9055dd798126c16351c5cbd306e4e9f4b160b49",
+  "ground_truth_filename": "face_ground_truth.json",
+  "evaluation": {
+    "iou_threshold": 0.5,
+    "render_zoom": 2.0,
+    "raw_boxes_without_mask_padding": true,
+    "pairing": "maximum-cardinality one-to-one IoU>=threshold",
+    "detector": "project face_detector.detect_faces default settings",
+    "PII_FACE_MODEL_environment": "(project default)"
+  },
+  "totals": {
+    "ground_truth_faces": 17,
+    "detected_boxes": 17,
+    "TP": 17,
+    "FP": 0,
+    "FN": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "pages": [
+    {
+      "page": 1,
+      "gt_count": 1,
+      "predicted_count": 1,
+      "TP": 1,
+      "FP": 0,
+      "FN": 0,
+      "matches": [
+        {
+          "gt_index": 1,
+          "prediction_index": 1,
+          "iou": 0.684617
+        }
+      ],
+      "missed_gt_indices": [],
+      "false_positive_prediction_indices": [],
+      "predictions": [
+        {
+          "bbox_pt": [
+            67.5,
+            84.0,
+            279.5,
+            399.5
+          ],
+          "confidence": 0.905426
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "gt_count": 1,
+      "predicted_count": 1,
+      "TP": 1,
+      "FP": 0,
+      "FN": 0,
+      "matches": [
+        {
+          "gt_index": 1,
+          "prediction_index": 1,
+          "iou": 0.818299
+        }
+      ],
+      "missed_gt_indices": [],
+      "false_positive_prediction_indices": [],
+      "predictions": [
+        {
+          "bbox_pt": [
+            193.5,
+            295.5,
+            280.5,
+            411.0
+          ],
+          "confidence": 0.924247
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "gt_count": 1,
+      "predicted_count": 1,
+      "TP": 1,
+      "FP": 0,
+      "FN": 0,
+      "matches": [
+        {
+          "gt_index": 1,
+          "prediction_index": 1,
+          "iou": 0.776049
+        }
+      ],
+      "missed_gt_indices": [],
+      "false_positive_prediction_indices": [],
+      "predictions": [
+        {
+          "bbox_pt": [
+            206.5,
+            147.0,
+            433.5,
+            460.5
+          ],
+          "confidence": 0.894872
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "gt_count": 1,
+      "predicted_count": 1,
+      "TP": 1,
+      "FP": 0,
+      "FN": 0,
+      "matches": [
+        {
+          "gt_index": 1,
+          "prediction_index": 1,
+          "iou": 0.653663
+        }
+      ],
+      "missed_gt_indices": [],
+      "false_positive_prediction_indices": [],
+      "predictions": [
+        {
+          "bbox_pt": [
+            219.0,
+            168.5,
+            401.5,
+            454.5
+          ],
+          "confidence": 0.786851
+        }
+      ]
+    },
+    {
+      "page": 5,
+      "gt_count": 4,
+      "predicted_count": 4,
+      "TP": 4,
+      "FP": 0,
+      "FN": 0,
+      "matches": [
+        {
+          "gt_index": 1,
+          "prediction_index": 1,
+          "iou": 0.783561
+        },
+        {
+          "gt_index": 2,
+          "prediction_index": 4,
+          "iou": 0.730697
+        },
+        {
+          "gt_index": 3,
+          "prediction_index": 3,
+          "iou": 0.788651
+        },
+        {
+          "gt_index": 4,
+          "prediction_index": 2,
+          "iou": 0.882475
+        }
+      ],
+      "missed_gt_indices": [],
+      "false_positive_prediction_indices": [],
+      "predictions": [
+        {
+          "bbox_pt": [
+            136.0,
+            163.0,
+            183.0,
+            222.5
+          ],
+          "confidence": 0.946982
+        },
+        {
+          "bbox_pt": [
+            321.5,
+            143.0,
+            371.0,
+            204.0
+          ],
+          "confidence": 0.927769
+        },
+        {
+          "bbox_pt": [
+            202.5,
+            95.0,
+            256.5,
+            158.5
+          ],
+          "confidence": 0.927364
+        },
+        {
+          "bbox_pt": [
+            199.0,
+            207.0,
+            253.0,
+            267.5
+          ],
+          "confidence": 0.914017
+        }
+      ]
+    },
+    {
+      "page": 6,
+      "gt_count": 8,
+      "predicted_count": 8,
+      "TP": 8,
+      "FP": 0,
+      "FN": 0,
+      "matches": [
+        {
+          "gt_index": 1,
+          "prediction_index": 7,
+          "iou": 0.616181
+        },
+        {
+          "gt_index": 2,
+          "prediction_index": 1,
+          "iou": 0.699153
+        },
+        {
+          "gt_index": 3,
+          "prediction_index": 8,
+          "iou": 0.776169
+        },
+        {
+          "gt_index": 4,
+          "prediction_index": 5,
+          "iou": 0.809332
+        },
+        {
+          "gt_index": 5,
+          "prediction_index": 2,
+          "iou": 0.708298
+        },
+        {
+          "gt_index": 6,
+          "prediction_index": 6,
+          "iou": 0.751191
+        },
+        {
+          "gt_index": 7,
+          "prediction_index": 4,
+          "iou": 0.75548
+        },
+        {
+          "gt_index": 8,
+          "prediction_index": 3,
+          "iou": 0.757981
+        }
+      ],
+      "missed_gt_indices": [],
+      "false_positive_prediction_indices": [],
+      "predictions": [
+        {
+          "bbox_pt": [
+            196.0,
+            308.5,
+            222.5,
+            343.0
+          ],
+          "confidence": 0.923826
+        },
+        {
+          "bbox_pt": [
+            239.0,
+            237.0,
+            263.5,
+            264.5
+          ],
+          "confidence": 0.922874
+        },
+        {
+          "bbox_pt": [
+            333.0,
+            213.5,
+            363.5,
+            250.0
+          ],
+          "confidence": 0.918209
+        },
+        {
+          "bbox_pt": [
+            309.0,
+            275.0,
+            344.0,
+            315.5
+          ],
+          "confidence": 0.917297
+        },
+        {
+          "bbox_pt": [
+            200.0,
+            237.0,
+            225.0,
+            268.0
+          ],
+          "confidence": 0.915988
+        },
+        {
+          "bbox_pt": [
+            291.0,
+            234.0,
+            317.0,
+            265.0
+          ],
+          "confidence": 0.913579
+        },
+        {
+          "bbox_pt": [
+            130.0,
+            226.0,
+            156.0,
+            256.5
+          ],
+          "confidence": 0.912272
+        },
+        {
+          "bbox_pt": [
+            233.5,
+            283.0,
+            263.5,
+            321.5
+          ],
+          "confidence": 0.91148
+        }
+      ]
+    },
+    {
+      "page": 7,
+      "gt_count": 1,
+      "predicted_count": 1,
+      "TP": 1,
+      "FP": 0,
+      "FN": 0,
+      "matches": [
+        {
+          "gt_index": 1,
+          "prediction_index": 1,
+          "iou": 0.906234
+        }
+      ],
+      "missed_gt_indices": [],
+      "false_positive_prediction_indices": [],
+      "predictions": [
+        {
+          "bbox_pt": [
+            150.5,
+            149.0,
+            339.0,
+            428.5
+          ],
+          "confidence": 0.901458
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Measures raw YuNet face detection, not PII redaction visual coverage.",
+    "Results apply only to this manually annotated seven-page dataset.",
+    "Ground Truth must be independently labeled and visually reviewed.",
+    "Original PDF was not modified; no map file or face crop was saved."
+  ]
+}

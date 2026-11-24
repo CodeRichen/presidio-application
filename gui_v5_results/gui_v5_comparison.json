@@ -1,0 +1,24 @@
+{
+  "before": {
+    "successful_runs": 6,
+    "avg_click_to_ui_s": 201.702,
+    "avg_worker_s": 201.568,
+    "avg_max_ui_lag_ms": 3085.505,
+    "worst_ui_lag_ms": 3501.8,
+    "avg_p95_ui_lag_ms": 11.022,
+    "total_ui_lag_over_500ms": 20,
+    "avg_peak_rss_mb": 2656.548
+  },
+  "after": {
+    "successful_runs": 3,
+    "avg_click_to_ui_s": 203.649,
+    "avg_worker_s": 203.534,
+    "avg_max_ui_lag_ms": 280.293,
+    "worst_ui_lag_ms": 416.98,
+    "avg_p95_ui_lag_ms": 11.443,
+    "total_ui_lag_over_500ms": 0,
+    "avg_peak_rss_mb": 2476.817
+  },
+  "improvement_worst_ui_lag_pct": 88.09,
+  "note": "Timing data only. V5 UI latency must be tested on the target Windows GUI."
+}

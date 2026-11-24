@@ -1,0 +1,226 @@
+{
+  "schema_version": "pdf_secure_export_v3_1",
+  "status": "OK",
+  "page_count": 7,
+  "dpi": 200,
+  "started_epoch_ms": 1795102608004.81,
+  "ended_epoch_ms": 1795102616955.09,
+  "total_s": 8.9489,
+  "steps": [
+    {
+      "stage": "page.render",
+      "duration_ms": 162.278,
+      "start_epoch_ms": 1795102608006.28,
+      "end_epoch_ms": 1795102608168.26,
+      "page": 1
+    },
+    {
+      "stage": "page.encode_png",
+      "duration_ms": 440.791,
+      "start_epoch_ms": 1795102608168.26,
+      "end_epoch_ms": 1795102608609.53,
+      "page": 1
+    },
+    {
+      "stage": "page.new_page",
+      "duration_ms": 0.231,
+      "start_epoch_ms": 1795102608609.53,
+      "end_epoch_ms": 1795102608609.53,
+      "page": 1
+    },
+    {
+      "stage": "page.insert_image",
+      "duration_ms": 135.218,
+      "start_epoch_ms": 1795102608609.53,
+      "end_epoch_ms": 1795102608744.79,
+      "page": 1
+    },
+    {
+      "stage": "page.render",
+      "duration_ms": 177.021,
+      "start_epoch_ms": 1795102608746.78,
+      "end_epoch_ms": 1795102608923.41,
+      "page": 2
+    },
+    {
+      "stage": "page.encode_png",
+      "duration_ms": 436.465,
+      "start_epoch_ms": 1795102608923.41,
+      "end_epoch_ms": 1795102609360.36,
+      "page": 2
+    },
+    {
+      "stage": "page.new_page",
+      "duration_ms": 0.274,
+      "start_epoch_ms": 1795102609360.36,
+      "end_epoch_ms": 1795102609360.36,
+      "page": 2
+    },
+    {
+      "stage": "page.insert_image",
+      "duration_ms": 115.869,
+      "start_epoch_ms": 1795102609360.36,
+      "end_epoch_ms": 1795102609475.74,
+      "page": 2
+    },
+    {
+      "stage": "page.render",
+      "duration_ms": 161.866,
+      "start_epoch_ms": 1795102609477.25,
+      "end_epoch_ms": 1795102609639.61,
+      "page": 3
+    },
+    {
+      "stage": "page.encode_png",
+      "duration_ms": 434.424,
+      "start_epoch_ms": 1795102609639.61,
+      "end_epoch_ms": 1795102610074.24,
+      "page": 3
+    },
+    {
+      "stage": "page.new_page",
+      "duration_ms": 0.2,
+      "start_epoch_ms": 1795102610074.24,
+      "end_epoch_ms": 1795102610074.24,
+      "page": 3
+    },
+    {
+      "stage": "page.insert_image",
+      "duration_ms": 119.633,
+      "start_epoch_ms": 1795102610074.24,
+      "end_epoch_ms": 1795102610193.44,
+      "page": 3
+    },
+    {
+      "stage": "page.render",
+      "duration_ms": 176.546,
+      "start_epoch_ms": 1795102610195.44,
+      "end_epoch_ms": 1795102610372.26,
+      "page": 4
+    },
+    {
+      "stage": "page.encode_png",
+      "duration_ms": 445.717,
+      "start_epoch_ms": 1795102610372.26,
+      "end_epoch_ms": 1795102610818.16,
+      "page": 4
+    },
+    {
+      "stage": "page.new_page",
+      "duration_ms": 0.234,
+      "start_epoch_ms": 1795102610818.16,
+      "end_epoch_ms": 1795102610818.16,
+      "page": 4
+    },
+    {
+      "stage": "page.insert_image",
+      "duration_ms": 96.26,
+      "start_epoch_ms": 1795102610818.16,
+      "end_epoch_ms": 1795102610914.51,
+      "page": 4
+    },
+    {
+      "stage": "page.render",
+      "duration_ms": 160.945,
+      "start_epoch_ms": 1795102610916.02,
+      "end_epoch_ms": 1795102611076.87,
+      "page": 5
+    },
+    {
+      "stage": "page.encode_png",
+      "duration_ms": 519.655,
+      "start_epoch_ms": 1795102611076.87,
+      "end_epoch_ms": 1795102611596.53,
+      "page": 5
+    },
+    {
+      "stage": "page.new_page",
+      "duration_ms": 0.263,
+      "start_epoch_ms": 1795102611596.53,
+      "end_epoch_ms": 1795102611596.53,
+      "page": 5
+    },
+    {
+      "stage": "page.insert_image",
+      "duration_ms": 160.178,
+      "start_epoch_ms": 1795102611596.53,
+      "end_epoch_ms": 1795102611756.78,
+      "page": 5
+    },
+    {
+      "stage": "page.render",
+      "duration_ms": 142.452,
+      "start_epoch_ms": 1795102611758.23,
+      "end_epoch_ms": 1795102611901.35,
+      "page": 6
+    },
+    {
+      "stage": "page.encode_png",
+      "duration_ms": 567.827,
+      "start_epoch_ms": 1795102611901.35,
+      "end_epoch_ms": 1795102612469.05,
+      "page": 6
+    },
+    {
+      "stage": "page.new_page",
+      "duration_ms": 0.194,
+      "start_epoch_ms": 1795102612469.05,
+      "end_epoch_ms": 1795102612469.05,
+      "page": 6
+    },
+    {
+      "stage": "page.insert_image",
+      "duration_ms": 155.219,
+      "start_epoch_ms": 1795102612469.05,
+      "end_epoch_ms": 1795102612624.86,
+      "page": 6
+    },
+    {
+      "stage": "page.render",
+      "duration_ms": 147.302,
+      "start_epoch_ms": 1795102612625.86,
+      "end_epoch_ms": 1795102612773.45,
+      "page": 7
+    },
+    {
+      "stage": "page.encode_png",
+      "duration_ms": 369.033,
+      "start_epoch_ms": 1795102612773.45,
+      "end_epoch_ms": 1795102613142.44,
+      "page": 7
+    },
+    {
+      "stage": "page.new_page",
+      "duration_ms": 0.256,
+      "start_epoch_ms": 1795102613142.44,
+      "end_epoch_ms": 1795102613142.44,
+      "page": 7
+    },
+    {
+      "stage": "page.insert_image",
+      "duration_ms": 107.094,
+      "start_epoch_ms": 1795102613142.44,
+      "end_epoch_ms": 1795102613250.4,
+      "page": 7
+    },
+    {
+      "stage": "pdf.save",
+      "duration_ms": 3581.579,
+      "start_epoch_ms": 1795102613250.4,
+      "end_epoch_ms": 1795102616832.27
+    },
+    {
+      "stage": "pdf.verify",
+      "duration_ms": 98.858,
+      "start_epoch_ms": 1795102616848.47,
+      "end_epoch_ms": 1795102616948.09
+    },
+    {
+      "stage": "pdf.atomic_replace",
+      "duration_ms": 6.204,
+      "start_epoch_ms": 1795102616948.09,
+      "end_epoch_ms": 1795102616953.62
+    }
+  ],
+  "note": "Timings only; no PII, paths, rendered content or restore-map values recorded."
+}

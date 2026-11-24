@@ -1,0 +1,1762 @@
+{
+  "schema": "v63_ocr_rescue_shadow_1",
+  "status": "NO_CONFIRMED_3X_RESCUES",
+  "shadow_mode": true,
+  "production_code_changed": false,
+  "only_ephemeral_synthetic_documents": true,
+  "zoom3_always_executed": true,
+  "policy_safe_for_production": false,
+  "coverage_threshold": 0.95,
+  "seed": 20261120,
+  "warning": "Do not turn off 3x OCR on any real document based on this experiment.",
+  "groups": {
+    "discovery": {
+      "status": "RECORDED",
+      "wall_s": 328.019,
+      "summary": {
+        "pages": 16,
+        "ground_truth_total": 64,
+        "probe_pii_total": 16,
+        "zoom2_gt_pass": 64,
+        "dual_gt_pass": 64,
+        "candidate_gt_pass": 64,
+        "rescues_total": 0,
+        "rescues_in_probes": 0,
+        "dangerous_skips": 0,
+        "dual_gt_gaps": 0,
+        "fallback_skipped_estimated": 10,
+        "selective_3x_saved_s_estimate": 82.108,
+        "measured_2x_s": 161.38,
+        "measured_3x_s": 141.322
+      },
+      "cases": [
+        {
+          "case": "discovery_01_micro_email",
+          "recipe": "micro_email",
+          "probe_font_px": 11,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 8.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.337,
+          "edge_mean": 14.155,
+          "zoom2_s": 14.493,
+          "zoom3_s": 10.542,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_02_tiny_phone",
+          "recipe": "tiny_phone",
+          "probe_font_px": 10,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 8.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.303,
+          "edge_mean": 14.104,
+          "zoom2_s": 10.171,
+          "zoom3_s": 9.706,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_03_faint_email",
+          "recipe": "faint_email",
+          "probe_font_px": 15,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 13.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.282,
+          "edge_mean": 14.116,
+          "zoom2_s": 9.917,
+          "zoom3_s": 3.107,
+          "omitted_3x_s_estimate": 3.107,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_04_local_blur",
+          "recipe": "local_blur",
+          "probe_font_px": 16,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 13.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.332,
+          "edge_mean": 14.15,
+          "zoom2_s": 9.94,
+          "zoom3_s": 9.574,
+          "omitted_3x_s_estimate": 9.574,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_05_jpeg_artifacts",
+          "recipe": "jpeg_artifacts",
+          "probe_font_px": 14,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 15.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.493,
+          "edge_mean": 14.163,
+          "zoom2_s": 9.951,
+          "zoom3_s": 9.997,
+          "omitted_3x_s_estimate": 9.997,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_06_watermark",
+          "recipe": "watermark",
+          "probe_font_px": 15,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 11.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.279,
+          "edge_mean": 15.108,
+          "zoom2_s": 10.375,
+          "zoom3_s": 10.659,
+          "omitted_3x_s_estimate": 10.659,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_07_mixed_small",
+          "recipe": "mixed_small",
+          "probe_font_px": 14,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 11.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.375,
+          "edge_mean": 14.214,
+          "zoom2_s": 10.014,
+          "zoom3_s": 9.626,
+          "omitted_3x_s_estimate": 9.626,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_08_clean_control",
+          "recipe": "clean_control",
+          "probe_font_px": 24,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 14.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.589,
+          "edge_mean": 14.399,
+          "zoom2_s": 9.829,
+          "zoom3_s": 9.706,
+          "omitted_3x_s_estimate": 9.706,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_09_micro_email",
+          "recipe": "micro_email",
+          "probe_font_px": 11,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 8.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.335,
+          "edge_mean": 14.147,
+          "zoom2_s": 9.961,
+          "zoom3_s": 9.425,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_10_tiny_phone",
+          "recipe": "tiny_phone",
+          "probe_font_px": 12,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 10.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.316,
+          "edge_mean": 14.128,
+          "zoom2_s": 9.827,
+          "zoom3_s": 9.599,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_11_faint_email",
+          "recipe": "faint_email",
+          "probe_font_px": 18,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 14.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.289,
+          "edge_mean": 14.17,
+          "zoom2_s": 9.879,
+          "zoom3_s": 9.808,
+          "omitted_3x_s_estimate": 9.808,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_12_local_blur",
+          "recipe": "local_blur",
+          "probe_font_px": 12,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 9.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.312,
+          "edge_mean": 14.12,
+          "zoom2_s": 9.79,
+          "zoom3_s": 9.627,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_13_jpeg_artifacts",
+          "recipe": "jpeg_artifacts",
+          "probe_font_px": 14,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 11.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.623,
+          "edge_mean": 14.19,
+          "zoom2_s": 9.775,
+          "zoom3_s": 9.701,
+          "omitted_3x_s_estimate": 9.701,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_14_watermark",
+          "recipe": "watermark",
+          "probe_font_px": 12,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 10.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.271,
+          "edge_mean": 15.09,
+          "zoom2_s": 9.97,
+          "zoom3_s": 10.315,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_15_mixed_small",
+          "recipe": "mixed_small",
+          "probe_font_px": 13,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 11.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.356,
+          "edge_mean": 14.186,
+          "zoom2_s": 9.78,
+          "zoom3_s": 4.277,
+          "omitted_3x_s_estimate": 4.277,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "discovery_16_clean_control",
+          "recipe": "clean_control",
+          "probe_font_px": 25,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 15.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.62,
+          "edge_mean": 14.428,
+          "zoom2_s": 7.708,
+          "zoom3_s": 5.653,
+          "omitted_3x_s_estimate": 5.653,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        }
+      ]
+    },
+    "holdout": {
+      "status": "RECORDED",
+      "wall_s": 188.143,
+      "summary": {
+        "pages": 8,
+        "ground_truth_total": 32,
+        "probe_pii_total": 8,
+        "zoom2_gt_pass": 32,
+        "dual_gt_pass": 32,
+        "candidate_gt_pass": 32,
+        "rescues_total": 0,
+        "rescues_in_probes": 0,
+        "dangerous_skips": 0,
+        "dual_gt_gaps": 0,
+        "fallback_skipped_estimated": 5,
+        "selective_3x_saved_s_estimate": 49.173,
+        "measured_2x_s": 83.209,
+        "measured_3x_s": 78.825
+      },
+      "cases": [
+        {
+          "case": "holdout_01_micro_email",
+          "recipe": "micro_email",
+          "probe_font_px": 11,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 8.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.318,
+          "edge_mean": 14.142,
+          "zoom2_s": 13.762,
+          "zoom3_s": 10.325,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "holdout_02_tiny_phone",
+          "recipe": "tiny_phone",
+          "probe_font_px": 9,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 8.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.281,
+          "edge_mean": 14.086,
+          "zoom2_s": 9.867,
+          "zoom3_s": 9.669,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "holdout_03_faint_email",
+          "recipe": "faint_email",
+          "probe_font_px": 15,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 12.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.267,
+          "edge_mean": 14.118,
+          "zoom2_s": 9.962,
+          "zoom3_s": 9.667,
+          "omitted_3x_s_estimate": 9.667,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "holdout_04_local_blur",
+          "recipe": "local_blur",
+          "probe_font_px": 17,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 13.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.339,
+          "edge_mean": 14.188,
+          "zoom2_s": 9.734,
+          "zoom3_s": 9.622,
+          "omitted_3x_s_estimate": 9.622,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "holdout_05_jpeg_artifacts",
+          "recipe": "jpeg_artifacts",
+          "probe_font_px": 13,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 13.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.458,
+          "edge_mean": 14.127,
+          "zoom2_s": 9.97,
+          "zoom3_s": 9.897,
+          "omitted_3x_s_estimate": 9.897,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "holdout_06_watermark",
+          "recipe": "watermark",
+          "probe_font_px": 16,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 11.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.267,
+          "edge_mean": 15.128,
+          "zoom2_s": 10.16,
+          "zoom3_s": 10.44,
+          "omitted_3x_s_estimate": 10.44,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "holdout_07_mixed_small",
+          "recipe": "mixed_small",
+          "probe_font_px": 9,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": false,
+          "decision_reasons": [
+            "small_or_missing_2x_words"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 6.5,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.302,
+          "edge_mean": 14.119,
+          "zoom2_s": 9.878,
+          "zoom3_s": 9.658,
+          "omitted_3x_s_estimate": 0,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        },
+        {
+          "case": "holdout_08_clean_control",
+          "recipe": "clean_control",
+          "probe_font_px": 25,
+          "gt_count": 4,
+          "gt_probe_count": 1,
+          "zoom2_gt_pass": 4,
+          "zoom3_gt_pass": 4,
+          "dual_gt_pass": 4,
+          "candidate_gt_pass": 4,
+          "rescues_total": 0,
+          "rescues_in_probes": 0,
+          "dangerous_skips": 0,
+          "dual_gt_gaps": 0,
+          "would_skip_3x": true,
+          "decision_reasons": [
+            "meets_experimental_quality_heuristic"
+          ],
+          "2x_words": 82,
+          "min_word_height_pt": 15.0,
+          "2x_pii_boxes": 8,
+          "merged_pii_boxes": 8,
+          "3x_extra_boxes": 0,
+          "contrast_std": 25.604,
+          "edge_mean": 14.418,
+          "zoom2_s": 9.876,
+          "zoom3_s": 9.547,
+          "omitted_3x_s_estimate": 9.547,
+          "gt_evaluation": [
+            {
+              "role": "anchor",
+              "label": "PERSON",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "anchor",
+              "label": "EMAIL",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            },
+            {
+              "role": "probe",
+              "label": "TW_PHONE",
+              "zoom2_pass": true,
+              "zoom3_pass": true,
+              "dual_pass": true,
+              "candidate_pass": true,
+              "rescue_by_3x": false,
+              "dangerous_skip": false
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

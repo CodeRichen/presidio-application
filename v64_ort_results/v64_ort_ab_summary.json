@@ -1,0 +1,276 @@
+{
+  "schema": "pii_v64_ort_ab_1",
+  "status": "NO_CONFIRMED_GAIN",
+  "fixture_sha256_verified": true,
+  "production_code_changed": false,
+  "only_synthetic_documents": true,
+  "dual_zoom_kept": true,
+  "temporary_private_maps_deleted_on_normal_exit": true,
+  "selected_threads": 4,
+  "repeats": 2,
+  "baseline": [
+    {
+      "trial_threads": 0,
+      "elapsed_s": 218.037,
+      "return_code": 0,
+      "execution_ok": true,
+      "safe": true,
+      "reason": null,
+      "ground_truth": {
+        "automated_pass": true,
+        "text_regions_pass": 27,
+        "text_regions_expected": 27,
+        "face_map_boxes_pass": 17,
+        "face_map_boxes_checked": 17,
+        "face_counts_needing_review": [],
+        "per_page_text_pass": [
+          3,
+          3,
+          3,
+          3,
+          6,
+          6,
+          3
+        ],
+        "per_page_face_map_counts": [
+          1,
+          1,
+          1,
+          1,
+          4,
+          8,
+          1
+        ],
+        "automated_status": "PASS_AUTOMATED",
+        "seconds": 182.765
+      },
+      "pdf_structure": {
+        "pages": 7,
+        "attachments": 0,
+        "text_chars": 0,
+        "annotations": 0,
+        "links": 0,
+        "widgets": 0,
+        "images_per_page": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "has_forms": false,
+        "eof_markers": 1,
+        "pass": true
+      },
+      "pdf_bytes": 20049832,
+      "ort_session_calls": 0,
+      "ort_sessions_tuned": 0,
+      "preexisting_session_options": 0
+    },
+    {
+      "trial_threads": 0,
+      "elapsed_s": 210.242,
+      "return_code": 0,
+      "execution_ok": true,
+      "safe": true,
+      "reason": null,
+      "ground_truth": {
+        "automated_pass": true,
+        "text_regions_pass": 27,
+        "text_regions_expected": 27,
+        "face_map_boxes_pass": 17,
+        "face_map_boxes_checked": 17,
+        "face_counts_needing_review": [],
+        "per_page_text_pass": [
+          3,
+          3,
+          3,
+          3,
+          6,
+          6,
+          3
+        ],
+        "per_page_face_map_counts": [
+          1,
+          1,
+          1,
+          1,
+          4,
+          8,
+          1
+        ],
+        "automated_status": "PASS_AUTOMATED",
+        "seconds": 178.724
+      },
+      "pdf_structure": {
+        "pages": 7,
+        "attachments": 0,
+        "text_chars": 0,
+        "annotations": 0,
+        "links": 0,
+        "widgets": 0,
+        "images_per_page": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "has_forms": false,
+        "eof_markers": 1,
+        "pass": true
+      },
+      "pdf_bytes": 20049832,
+      "ort_session_calls": 0,
+      "ort_sessions_tuned": 0,
+      "preexisting_session_options": 0
+    }
+  ],
+  "candidate": [
+    {
+      "trial_threads": 4,
+      "elapsed_s": 202.254,
+      "return_code": 0,
+      "execution_ok": true,
+      "safe": true,
+      "reason": null,
+      "ground_truth": {
+        "automated_pass": true,
+        "text_regions_pass": 27,
+        "text_regions_expected": 27,
+        "face_map_boxes_pass": 17,
+        "face_map_boxes_checked": 17,
+        "face_counts_needing_review": [],
+        "per_page_text_pass": [
+          3,
+          3,
+          3,
+          3,
+          6,
+          6,
+          3
+        ],
+        "per_page_face_map_counts": [
+          1,
+          1,
+          1,
+          1,
+          4,
+          8,
+          1
+        ],
+        "automated_status": "PASS_AUTOMATED",
+        "seconds": 174.092
+      },
+      "pdf_structure": {
+        "pages": 7,
+        "attachments": 0,
+        "text_chars": 0,
+        "annotations": 0,
+        "links": 0,
+        "widgets": 0,
+        "images_per_page": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "has_forms": false,
+        "eof_markers": 1,
+        "pass": true
+      },
+      "pdf_bytes": 20049832,
+      "ort_session_calls": 3,
+      "ort_sessions_tuned": 3,
+      "preexisting_session_options": 3
+    },
+    {
+      "trial_threads": 4,
+      "elapsed_s": 207.716,
+      "return_code": 0,
+      "execution_ok": true,
+      "safe": true,
+      "reason": null,
+      "ground_truth": {
+        "automated_pass": true,
+        "text_regions_pass": 27,
+        "text_regions_expected": 27,
+        "face_map_boxes_pass": 17,
+        "face_map_boxes_checked": 17,
+        "face_counts_needing_review": [],
+        "per_page_text_pass": [
+          3,
+          3,
+          3,
+          3,
+          6,
+          6,
+          3
+        ],
+        "per_page_face_map_counts": [
+          1,
+          1,
+          1,
+          1,
+          4,
+          8,
+          1
+        ],
+        "automated_status": "PASS_AUTOMATED",
+        "seconds": 179.788
+      },
+      "pdf_structure": {
+        "pages": 7,
+        "attachments": 0,
+        "text_chars": 0,
+        "annotations": 0,
+        "links": 0,
+        "widgets": 0,
+        "images_per_page": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "has_forms": false,
+        "eof_markers": 1,
+        "pass": true
+      },
+      "pdf_bytes": 20049832,
+      "ort_session_calls": 3,
+      "ort_sessions_tuned": 3,
+      "preexisting_session_options": 3
+    }
+  ],
+  "pixel_comparison": [
+    {
+      "pages_compared": 7,
+      "identical_pages": 7,
+      "all_identical": true
+    },
+    {
+      "pages_compared": 7,
+      "identical_pages": 7,
+      "all_identical": true
+    }
+  ],
+  "comparison": {
+    "status": "NO_CONFIRMED_GAIN",
+    "baseline_median_s": 214.139,
+    "candidate_median_s": 204.985,
+    "improvement_pct": 4.28,
+    "threads": 4,
+    "samples_per_mode": 2
+  },
+  "note": "This is not proof of production safety; GUI lag was not tested."
+}

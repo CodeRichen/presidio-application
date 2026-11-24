@@ -1,0 +1,38 @@
+{
+  "schema": "pii_v6693_fail_closed_fault_review_v1",
+  "status": "FAULT_MOCK_TESTS_PASS_SOURCE_REVIEW_REQUIRED",
+  "synthetic_mock_only": true,
+  "real_ocr_executed": false,
+  "real_pdf_security_audit_executed": false,
+  "actual_gui_executed": false,
+  "production_code_modified": false,
+  "production_env_modified": false,
+  "static_source_checks": {
+    "source_parseable": true,
+    "required_gui_hooks": true,
+    "required_core_hooks": true,
+    "core_exception_may_continue": true,
+    "core_error_may_copy_original": true,
+    "scan_may_copy_unmasked_tree": true
+  },
+  "mock_scenarios": {
+    "BASELINE_APPROVED_MOCK": true,
+    "GPU_WORKER_CRASH": true,
+    "OCR_TIMEOUT": true,
+    "PDF_EXPORT_ERROR": true,
+    "PARTIAL_OUTPUT_EXCEPTION": true,
+    "MISSING_OUTPUT": true,
+    "EMPTY_OUTPUT": true,
+    "SECURITY_AUDIT_REJECTED": true,
+    "SECURITY_AUDIT_EXCEPTION": true,
+    "MALICIOUS_UNTRUSTED_PATH": true,
+    "MODIFIED_SOURCE_REJECTED": true,
+    "SECOND_ITEM_FAILURE_ROLLBACK": true,
+    "WRONG_RESULT_TYPE": true,
+    "OUTPUT_SYMLINK_REJECTED": true,
+    "SOURCE_BYTES_PRESERVED": true
+  },
+  "mock_tests_passed": 15,
+  "mock_tests_total": 15,
+  "production_gpu_allowed": false
+}

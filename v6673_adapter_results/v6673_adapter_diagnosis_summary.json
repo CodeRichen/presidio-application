@@ -1,0 +1,31 @@
+{
+  "schema": "pii_v6673_adapter_diagnosis_v1",
+  "status": "DIAGNOSTIC_FAILED",
+  "synthetic_fixture_sha256_verified": true,
+  "only_synthetic_documents": true,
+  "production_code_modified": false,
+  "production_environment_modified": false,
+  "full_pdf_security_gate_executed": false,
+  "probe": {
+    "return_code": 2,
+    "elapsed_s": 42.323,
+    "status": "ADAPTER_PROBE_EXCEPTION",
+    "stage": "COMPARE_2X",
+    "error_type": "KeyError",
+    "pairs_checked": 1,
+    "pairs_equal": 0,
+    "provider_route_verified": false,
+    "pairs": [
+      {
+        "zoom": 2,
+        "mismatch_kind": "WORD_COUNT_DIFFERENCE",
+        "cpu_schema_ok": false,
+        "hybrid_schema_ok": true,
+        "ordered_text_equal_after_whitespace_removal": null,
+        "exact_adapter_equal": null,
+        "hypothesis": "INVALID_OCR_ADAPTER_DATA"
+      }
+    ]
+  },
+  "warning": "Diagnostic only. No model, PII, face, final PDF or GUI speed acceptance."
+}

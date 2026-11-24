@@ -1,0 +1,45 @@
+{
+  "description": "TC-STR 7k-word held-out test OCR benchmark (project pipeline)",
+  "dataset": "TC-STR 7k-word",
+  "split": "test",
+  "sample_size": 100,
+  "test_set_total": 3706,
+  "sample_seed": 42,
+  "labels_sha256": "398c04e674ec9ab5409fc228d12bd3b92e97029203a463f832831a6de1e1e9dc",
+  "sample_selection_sha256": "c49169ade8f936c00a048f531fd9547133023012c0ecd7b211ce246460e1ee49",
+  "engine_requested": "rapid",
+  "engine_selector": "PII_OCR_BACKEND",
+  "pipeline": "handler_media.preprocess_for_ocr + handler_media.ocr_words",
+  "preprocess": true,
+  "text_order": "line_id, top, left; concatenate tokens without inserted spaces",
+  "primary_normalization": "Unicode NFC + outer whitespace trim; no Traditional/Simplified conversion",
+  "strict": {
+    "exact_count": 74,
+    "exact_match_rate": 0.74,
+    "character_edit_operations": 88,
+    "reference_characters": 357,
+    "cer": 0.24649859943977592
+  },
+  "supplementary_whitespace_ignored": {
+    "exact_count": 74,
+    "exact_match_rate": 0.74,
+    "character_edit_operations": 88,
+    "reference_characters": 357,
+    "cer": 0.24649859943977592
+  },
+  "empty_predictions": 19,
+  "latency_seconds": {
+    "median_per_image": 4.487304099951871,
+    "mean_per_image": 4.576115529994713,
+    "p95_per_image": 10.966580900014378,
+    "total_timed": 457.6115529994713,
+    "total_wall_including_import": 459.2538535000058,
+    "first_call_may_include_model_initialization": true
+  },
+  "limitations": [
+    "TC-STR images are cropped text, not whole-page OCR nor a PII detection benchmark.",
+    "Metrics evaluate OCR localization+recognition as executed by project handler_media, not an isolated recognition network.",
+    "The same fixed sample selection and evaluation policy are needed for cross-engine comparison.",
+    "These test images may not represent scanned PDFs or sensitive field detection performance."
+  ]
+}

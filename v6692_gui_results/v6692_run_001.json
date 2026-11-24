@@ -1,0 +1,41 @@
+{
+  "status": "SINGLE_MODE_SYNTHETIC_GATE_PASS",
+  "mode": "hybrid",
+  "trials": {
+    "hybrid": {
+      "safe": true,
+      "mode": "hybrid",
+      "reason": null,
+      "child_status": "COMPLETE",
+      "child_stage": "COMPLETE",
+      "processing_s": 76.913,
+      "run_and_audit_s": 80.102,
+      "preflight_s": 33.14,
+      "child_elapsed_s": 145.857,
+      "worker_ocr_calls": 14,
+      "worker_ocr_wall_s": 40.079,
+      "preflight_pairs": 2,
+      "preflight_equal_pairs": 2,
+      "text_regions_pass": 27,
+      "face_map_boxes_pass": 17,
+      "pdf_structure_pass": true,
+      "provider_route_verified": true
+    }
+  },
+  "pixel_identical": null,
+  "schema": "pii_v6692_official_ui_synthetic_only_v1",
+  "synthetic_only": true,
+  "not_production_gpu_enablement": true,
+  "production_files_modified": false,
+  "gui": {
+    "samples": 1335,
+    "interval_ms": 100,
+    "p95_lag_ms": 11.035,
+    "p99_lag_ms": 14.163,
+    "max_lag_ms": 314.124,
+    "over_100ms": 3,
+    "over_250ms": 1,
+    "over_500ms": 0,
+    "click_to_finish_s": 146.15
+  }
+}

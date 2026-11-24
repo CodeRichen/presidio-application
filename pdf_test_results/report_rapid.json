@@ -1,0 +1,111 @@
+{
+  "engine": "rapid",
+  "source": "C:\\Users\\user\\Desktop\\大四上\\presidio_app\\presidio_app_allen\\synthetic_scanned_pii_3pages.pdf",
+  "output": "C:\\Users\\user\\Desktop\\大四上\\presidio_app\\presidio_app_allen\\pdf_test_results\\synthetic_scanned_pii_3pages_masked_rapid.pdf",
+  "source_sha256": "9c479fba8a79580dbdd596a99b6590cfc5bb368ea90cedee88e95fc37cfca7f1",
+  "page_count": 3,
+  "entries_total": 11,
+  "source_unchanged": true,
+  "identical_original_embedded_images": 0,
+  "pages": [
+    {
+      "page": 1,
+      "detected_labels": {
+        "PERSON": 2,
+        "TW_PHONE": 1,
+        "EMAIL": 1
+      },
+      "redaction_entries": 4,
+      "expected_regions": [
+        {
+          "label": "PERSON",
+          "text": "林家宇",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        },
+        {
+          "label": "PERSON",
+          "text": "陳雅婷",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        },
+        {
+          "label": "TW_PHONE",
+          "text": "0912-345-678",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        },
+        {
+          "label": "EMAIL",
+          "text": "demo@example.com",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "detected_labels": {
+        "PERSON": 1,
+        "TW_PHONE": 1,
+        "EMAIL": 1
+      },
+      "redaction_entries": 3,
+      "expected_regions": [
+        {
+          "label": "PERSON",
+          "text": "王怡君",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        },
+        {
+          "label": "TW_PHONE",
+          "text": "0988-123-456",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        },
+        {
+          "label": "EMAIL",
+          "text": "qa.team@example.net",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "detected_labels": {
+        "PERSON": 2,
+        "TW_PHONE": 1,
+        "EMAIL": 1
+      },
+      "redaction_entries": 4,
+      "expected_regions": [
+        {
+          "label": "PERSON",
+          "text": "林家宇",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        },
+        {
+          "label": "TW_PHONE",
+          "text": "0912-345-678",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        },
+        {
+          "label": "PERSON",
+          "text": "陳雅婷",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        },
+        {
+          "label": "EMAIL",
+          "text": "demo@example.com",
+          "black_coverage": 1.0,
+          "visual_box_coverage": "LIKELY_COVERED"
+        }
+      ]
+    }
+  ]
+}

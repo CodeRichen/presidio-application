@@ -1,0 +1,50 @@
+{
+  "test_type": "manual_real_gui_file_batch",
+  "started_at": "2026-11-19T14:02:52+08:00",
+  "run_id": "20261119_140252_268062_34096",
+  "input_files": [
+    {
+      "name": "7page_pdf_preview.jpg",
+      "extension": ".jpg",
+      "size_bytes": 103678,
+      "exists": true
+    },
+    {
+      "name": "pii_face_7page_scan_source.pdf",
+      "extension": ".pdf",
+      "size_bytes": 27715698,
+      "exists": true
+    }
+  ],
+  "output_files": [
+    {
+      "name": "7page_pdf_preview_masked.jpg",
+      "extension": ".jpg",
+      "size_bytes": 79684,
+      "exists": true
+    },
+    {
+      "name": "pii_face_7page_scan_source_masked.pdf",
+      "extension": ".pdf",
+      "size_bytes": 20030857,
+      "exists": true
+    }
+  ],
+  "input_count": 2,
+  "output_count": 2,
+  "status": "OK",
+  "exception_type": null,
+  "simulated_error": false,
+  "click_to_ui_s": 199.0197,
+  "worker_s": 198.9114,
+  "wait_and_ui_s": 0.1082,
+  "ui_heartbeat_interval_ms": 100,
+  "ui_lag_samples": 1750,
+  "ui_lag_max_ms": 2900.45,
+  "ui_lag_p95_ms": 11.37,
+  "ui_lag_over_500ms": 3,
+  "rss_start_mb": 1718.0,
+  "rss_peak_mb": 2629.84,
+  "rss_peak_increase_mb": 911.85,
+  "note": "UI lag is scheduling delay (proxy, not direct click latency). No OCR/PII content stored."
+}

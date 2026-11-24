@@ -1,0 +1,20 @@
+{
+  "schema": "pii_v662_gpu_ab_1",
+  "status": "CUDA_EP_NOT_AVAILABLE",
+  "production_code_changed": false,
+  "only_synthetic_documents": true,
+  "dual_zoom_kept": true,
+  "fixture_sha256_verified": true,
+  "available": {
+    "ort_import_ok": true,
+    "cuda_ep_available": false,
+    "cpu_ep_available": true
+  },
+  "repeats": 2,
+  "baseline": [],
+  "candidate": [],
+  "pixel_checks": [],
+  "comparison": {
+    "status": "CUDA_EP_NOT_AVAILABLE"
+  }
+}
