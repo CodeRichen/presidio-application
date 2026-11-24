@@ -30,17 +30,6 @@ import core
 import entity_store
 import hotkey_service
 import preprocess
-import time
-
-# BEGIN GUI_LOG_QUEUE_OPTIMIZATION_V1
-# GUI updates are time-bounded and batched; media processing remains in its worker.
-GUI_LOG_POLL_MAX_ITEMS = 250
-GUI_LOG_POLL_BUDGET_MS = 12.0
-GUI_LOG_QUEUE_LIMIT = 12000       # Backpressure only for display logs
-GUI_LOG_MAX_RECORD_CHARS = 16000  # Do not put arbitrarily large writes in Tk
-GUI_LOG_MAX_LINES = 3000          # Bounded on-screen history
-# END GUI_LOG_QUEUE_OPTIMIZATION_V1
-
 
 # UI 啟動時預設使用 AC + Chunk
 os.environ.setdefault("PII_NER_BACKEND", "ac")
@@ -139,31 +128,12 @@ def hotkey_from_event(event):
 
 
 class QueueWriter:
-    """Route stdout to UI, without blocking a busy worker on an overloaded log queue.
-
-    Only the GUI history is limited. PII detection and saved outputs are unchanged.
-    """
+    """把 print 的輸出導到 queue，由主執行緒更新到記錄區"""
     def __init__(self, q):
         self.q = q
-        self._drop_lock = threading.Lock()
-        self._dropped = 0
 
     def write(self, s):
-        if not s:
-            return
-        if len(s) > GUI_LOG_MAX_RECORD_CHARS:
-            s = s[:GUI_LOG_MAX_RECORD_CHARS] + "\n[GUI] 單筆日誌過長，顯示部分已省略。\n"
-        with self._drop_lock:
-            # Keep important errors visible under extreme logging load.
-            important = s.lstrip().startswith(("[錯誤]", "[PDF安全檢查]", "[PDF安全輸出]"))
-            if not important and self.q.qsize() >= GUI_LOG_QUEUE_LIMIT:
-                self._dropped += 1
-                if self._dropped == 1:
-                    self.q.put(("log", "\n[GUI] 畫面日誌過量，部分內容已略過；不影響實際遮蔽結果。\n"))
-                return
-            if self._dropped:
-                self.q.put(("log", f"\n[GUI] 佇列過載，省略 {self._dropped} 段畫面日誌（不影響實際處理）。\n"))
-                self._dropped = 0
+        if s:
             self.q.put(("log", s))
 
     def flush(self):
@@ -841,63 +811,36 @@ class App(tk.Tk):
                 self.q.put(("done", None, e))
         threading.Thread(target=worker, daemon=True).start()
 
-    def _append_log_batch(self, chunks):
-        """One Tk insert per batch; keep UI history bounded to avoid growing costs."""
-        if not chunks:
-            return
-        self.log.configure(state="normal")
-        try:
-            self.log.insert("end", "".join(chunks))
-            try:
-                line_count = int(self.log.index("end-1c").split(".")[0])
-                if line_count > GUI_LOG_MAX_LINES:
-                    self.log.delete("1.0", f"{line_count - GUI_LOG_MAX_LINES + 1}.0")
-            except (ValueError, IndexError):
-                pass
-            self.log.see("end")
-        finally:
-            self.log.configure(state="disabled")
-
     def _poll(self):
-        """Drain only a bounded amount per tick. UI never loops forever on logs."""
-        started = time.perf_counter()
-        chunks = []
-        handled = 0
-        while handled < GUI_LOG_POLL_MAX_ITEMS:
-            if handled and (time.perf_counter() - started) * 1000 >= GUI_LOG_POLL_BUDGET_MS:
-                break
-            try:
+        try:
+            while True:
                 item = self.q.get_nowait()
-            except queue.Empty:
-                break
-            handled += 1
-            if item[0] == "log":
-                chunks.append(item[1])
-            elif item[0] == "status":
-                if self.busy:
-                    self.status.set(item[1])
-            elif item[0] == "done":
-                # Show preceding worker output before completion/errors.
-                self._append_log_batch(chunks)
-                chunks.clear()
-                _, result, err = item
-                self._set_busy(False)
-                cb, self._on_done = self._on_done, None
-                if err:
-                    print(f"[錯誤] {err}")
-                    messagebox.showerror("處理失敗", str(err))
-                elif cb:
-                    cb(result)
-                self.refresh_map_view()
-        self._append_log_batch(chunks)
-
-        if len(self.mapping) != self._map_n:
+                if item[0] == "log":
+                    self.log.configure(state="normal")
+                    self.log.insert("end", item[1])
+                    self.log.see("end")
+                    self.log.configure(state="disabled")
+                elif item[0] == "status":
+                    if self.busy:
+                        self.status.set(item[1])
+                elif item[0] == "done":
+                    _, result, err = item
+                    self._set_busy(False)
+                    cb, self._on_done = self._on_done, None
+                    if err:
+                        print(f"[錯誤] {err}")
+                        messagebox.showerror("處理失敗", str(err))
+                    elif cb:
+                        cb(result)
+                    self.refresh_map_view()
+        except queue.Empty:
+            pass
+        if len(self.mapping) != self._map_n:   # 快速鍵在背景新增了標籤
             self.refresh_map_view()
         self._tick += 1
-        if self._tick % 10 == 0 and entity_store.signature() != self._store_sig:
+        if self._tick % 10 == 0 and entity_store.signature() != self._store_sig:   # 名單被 main / 快速鍵改過
             self.refresh_lists()
-        # Poll again fairly soon under load, without starving other Tk events.
-        self.after(25 if not self.q.empty() else 100, self._poll)
+        self.after(100, self._poll)
 
     # ================= 文字 =================
     def read_clipboard_text(self):
