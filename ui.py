@@ -2,18 +2,19 @@
 ui.py - 剪貼簿敏感資訊防護 圖形介面 (tkinter，不需額外安裝)
 ====================================================
 與 main.py 互相獨立，只 import core.py / entity_store.py / hotkey_service.py。
-外觀 (顏色 / 尺寸 / 按鈕樣式) 集中在 scan_tab.py 最上面的 THEME / LAYOUT。
+外觀 (顏色 / 尺寸 / 字型 / 按鈕樣式) 集中在 theme.py；資料夾掃描分頁在 scan_tab.py。
 分頁：
   - 文字      貼上/輸入文字，選擇「遮蔽」或「還原」後按「判斷」；無變化時依情況提示使用者。
               判斷完輸入框會清空，結果接在結果框原有內容後面 (結果不會被清掉，要清再按「清空」)。
               送模型前統一先做前處理 (全形轉半形、隱形字元、網頁標籤、簡繁、空白)，
               可開關，也能「預覽前處理」看每一步改了什麼；遮蔽只動被偵測到的那一段，原文其餘部分不變
   - 檔案      選擇多個檔案 -> 去識別化
-  - 資料夾掃描 (scan_tab.py) 選一個資料夾 -> 先列出所有檔案，掃描時即時更新每個檔案的圖示
-  - 名單管理  敏感清單 (點 ✕ 一下就刪除，不用確認，刪掉的值進黑名單永遠不會再被自動加入)
+  - 資料夾掃描 (scan_tab.py) 選一個資料夾 -> 列出所有檔案，掃描後標示安全 / 不安全；可選是否產生遮蔽後的檔案
+  - 名單管理  敏感清單 (點「刪除」一下就刪除，不用確認，刪掉的值進黑名單永遠不會再被自動加入)
               / 新增敏感資料 (類型可不填，由模型判斷) / 黑名單 / 安全清單 (永遠不遮蔽)
   - 快速鍵    錄製並更改快速鍵、啟動/停止全域快速鍵
   - 對照表    遮蔽標籤與原文的對照 (結束時刪除；名單不會)
+版面：各區塊之間的分隔線可以用滑鼠拖曳調整大小，縮放視窗時說明文字會自動換行、表格欄位會自動伸縮。
 耗時工作在背景執行緒跑，介面不會卡住；所有 print 顯示在下方記錄區。
 """
 import os
@@ -30,8 +31,10 @@ import core
 import entity_store
 import hotkey_service
 import preprocess
-from scan_tab import (ScanTab, apply_theme, style_text, style_listbox,
-                      THEME as T, LAYOUT as L, BTN as B)
+from theme import (apply_theme, enable_dpi_awareness, font_report, style_text, style_listbox,
+                   hint_label, auto_wrap, make_tree, zebra, ui_font,
+                   THEME as T, LAYOUT as L, BTN as B)
+from scan_tab import ScanTab
 
 # UI 啟動時預設使用 AC + Chunk
 os.environ.setdefault("PII_NER_BACKEND", "ac")
@@ -142,35 +145,13 @@ class QueueWriter:
         pass
 
 
-def zebra(i):
-    """表格隔行底色用的 tag"""
-    return ("odd",) if i % 2 else ()
-
-
-def make_tree(parent, columns, height=None):
-    """建立帶捲軸的 Treeview。columns: [(id, 標題, 寬度, 對齊)]"""
-    frame = ttk.Frame(parent)
-    frame.pack(fill="both", expand=True)
-    tree = ttk.Treeview(frame, columns=[c[0] for c in columns], show="headings",
-                        selectmode="extended", **({"height": height} if height else {}))
-    for cid, text, w, anchor in columns:
-        tree.heading(cid, text=text)
-        tree.column(cid, width=w, anchor=anchor, stretch=(cid != columns[0][0]))
-    tree.tag_configure("odd", background=T["row_alt"])
-    sb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-    tree.configure(yscrollcommand=sb.set)
-    tree.pack(side="left", fill="both", expand=True)
-    sb.pack(side="right", fill="y")
-    return tree
-
-
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("剪貼簿敏感資訊防護")
         self.geometry(L["window"])
         self.minsize(*L["min_size"])
-        apply_theme(self)           # 顏色 / 字型 / 按鈕樣式，要在建立元件之前
+        apply_theme(self)           # 字型 / 顏色 / 按鈕樣式，要在建立元件之前
 
         self.mapping = core.load_map()
         self.q = queue.Queue()
@@ -190,6 +171,7 @@ class App(tk.Tk):
         self._build()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(100, self._poll)
+        print(font_report())
         print(f"[就緒] 對照表 {len(self.mapping)} 筆、敏感清單 {entity_store.items_count()} 筆、"
               f"安全清單 {len(entity_store.load_safe())} 筆、黑名單 {len(entity_store.load_blocked())} 筆")
         self._start(core.warmup, "載入模型中…", None)  # 背景預熱
@@ -201,60 +183,76 @@ class App(tk.Tk):
         # ---- 最上方標題列 ----
         head = tk.Frame(self, bg=T["header"])
         head.pack(fill="x")
-        tk.Label(head, text="🛡  剪貼簿敏感資訊防護", bg=T["header"], fg="white",
-                 font=(L["font"], L["font_size"] + 6, "bold")).pack(side="left", padx=16, pady=10)
+        tk.Label(head, text="剪貼簿敏感資訊防護", bg=T["header"], fg="white",
+                 font=ui_font(6, True)).pack(side="left", padx=16, pady=10)
         tk.Label(head, text="遮蔽 · 還原 · 檔案去識別化 · 資料夾掃描", bg=T["header"], fg=T["header_sub"],
-                 font=(L["font"], L["font_size"])).pack(side="left")
+                 font=ui_font()).pack(side="left")
 
-        self.nb = nb = ttk.Notebook(self)
-        nb.pack(fill="both", expand=True, padx=pad, pady=(pad, 4))
+        # ---- 最下方狀態列 (先 pack，視窗再小也不會被擠掉) ----
+        self.status = tk.StringVar(value="就緒")
+        ttk.Label(self, textvariable=self.status, style="Status.TLabel", anchor="w").pack(side="bottom", fill="x")
+
+        # ---- 中間：上 = 分頁，下 = 記錄區，中間的分隔線可拖曳 ----
+        self.main_pane = ttk.PanedWindow(self, orient="vertical")
+        self.main_pane.pack(fill="both", expand=True, padx=pad, pady=(pad, pad))
+        top = ttk.Frame(self.main_pane)
+        lg = ttk.LabelFrame(self.main_pane, text="記錄 (上方分隔線可拖曳調整高度)")
+        self.main_pane.add(top, weight=5)
+        self.main_pane.add(lg, weight=1)
+
+        self.nb = nb = ttk.Notebook(top)
+        nb.pack(fill="both", expand=True)
 
         # ===== 文字分頁 =====
         t = ttk.Frame(nb)
-        nb.add(t, text="📝 文字")
+        nb.add(t, text="文字")
 
         bar = ttk.Frame(t)
         bar.pack(fill="x", pady=4)
         ttk.Label(bar, text="內容類型：").pack(side="left")
         self.kind_var = tk.StringVar(value=KIND_TEXT)
         # 兩個互斥的切換按鈕：按下其中一個，另一個自動彈起 (共用同一個 variable)
-        for kind, icon in ((KIND_CODE, "💻"), (KIND_TEXT, "📄")):
-            tk.Radiobutton(bar, text=f"{icon} {kind}", variable=self.kind_var, value=kind, indicatoron=False,
+        for kind in (KIND_CODE, KIND_TEXT):
+            tk.Radiobutton(bar, text=kind, variable=self.kind_var, value=kind, indicatoron=False,
                            width=10, pady=3, bd=0, relief="flat", bg=T["neutral"], fg=T["text"],
                            activebackground=T["neutral_hover"], selectcolor=T["select"],
-                           font=(L["font"], L["font_size"], "bold")).pack(side="left", padx=2)
-        self.btn_read = ttk.Button(bar, text="📋 讀取剪貼簿", style=B["teal"], command=self.read_clipboard_text)
+                           font=ui_font(0, True)).pack(side="left", padx=2)
+        self.btn_read = ttk.Button(bar, text="讀取剪貼簿", style=B["teal"], command=self.read_clipboard_text)
         self.btn_read.pack(side="left", padx=(12, 2))
-        self.btn_run = ttk.Button(bar, text="▶ 判斷", style=B["primary"], command=self.run_text)
+        self.btn_run = ttk.Button(bar, text="判斷", style=B["primary"], command=self.run_text)
         self.btn_run.pack(side="left", padx=2)
         self.pp_var = tk.BooleanVar(value=preprocess.ENABLED)
         ttk.Checkbutton(bar, text="送模型前先前處理", variable=self.pp_var,
                         command=self._toggle_preprocess).pack(side="left", padx=(14, 2))
-        ttk.Button(bar, text="👁 預覽前處理", style=B["purple"], command=self.preview_preprocess).pack(side="left", padx=2)
+        ttk.Button(bar, text="預覽前處理", style=B["purple"], command=self.preview_preprocess).pack(side="left", padx=2)
 
         # 使用者明確選擇文字處理方式，預設只遮蔽，避免自動還原造成個資外露。
         mode_bar = ttk.Frame(t)
         mode_bar.pack(fill="x", pady=(3, 5))
         ttk.Label(mode_bar, text="處理方式：").pack(side="left")
         self.text_action_var = tk.StringVar(value="mask")
-        ttk.Radiobutton(mode_bar, text="🔒 遮蔽（保留已存在標籤）", variable=self.text_action_var,
+        ttk.Radiobutton(mode_bar, text="遮蔽（保留已存在標籤）", variable=self.text_action_var,
                         value="mask").pack(side="left", padx=(5, 15))
-        ttk.Radiobutton(mode_bar, text="🔓 還原（依對照表）", variable=self.text_action_var,
+        ttk.Radiobutton(mode_bar, text="還原（依對照表）", variable=self.text_action_var,
                         value="restore").pack(side="left")
-        ttk.Label(t, text=(
-            "A（uer/roberta-base-finetuned-cluener2020-chinese）  "
-            "C（Davlan/bert-base-multilingual-cased-ner-hrl）"
-        ), style="Hint.TLabel", justify="left", wraplength=L["wrap"]).pack(anchor="w", pady=(0, 5))
+        hint_label(t, "A（uer/roberta-base-finetuned-cluener2020-chinese）  "
+                      "C（Davlan/bert-base-multilingual-cased-ner-hrl）", pady=(0, 5))
 
         # 在文字分頁保留最近一次的處理狀態，提示視窗關閉後仍可查看。
         self.text_notice_var = tk.StringVar(value="選擇遮蔽或還原，按「判斷」執行。")
-        ttk.Label(t, textvariable=self.text_notice_var, style="Info.TLabel",
-                  justify="left", wraplength=L["wrap"]).pack(anchor="w", pady=(0, 5))
+        hint_label(t, textvariable=self.text_notice_var, style="Info.TLabel", pady=(0, 5))
+
+        # 底部按鈕先 pack (side=bottom)
+        bar2 = ttk.Frame(t)
+        bar2.pack(side="bottom", fill="x", pady=4)
+        ttk.Button(bar2, text="結果複製到剪貼簿", style=B["success"], command=self.copy_result_text).pack(side="left")
+        ttk.Button(bar2, text="結果移到輸入框", style=B["default"], command=self.result_to_input).pack(side="left", padx=4)
+        ttk.Button(bar2, text="清空", style=B["warn"], command=self.clear_text).pack(side="left")
 
         panes = ttk.PanedWindow(t, orient="vertical")
         panes.pack(fill="both", expand=True)
-        f1 = ttk.LabelFrame(panes, text="✏ 輸入")
-        f2 = ttk.LabelFrame(panes, text="✅ 結果")
+        f1 = ttk.LabelFrame(panes, text="輸入")
+        f2 = ttk.LabelFrame(panes, text="結果")
         self.txt_in = scrolledtext.ScrolledText(f1, height=L["text_height"], wrap="word", undo=True)
         self.txt_in.pack(fill="both", expand=True, padx=4, pady=4)
         self.txt_out = scrolledtext.ScrolledText(f2, height=L["text_height"], wrap="word")
@@ -264,73 +262,62 @@ class App(tk.Tk):
         panes.add(f1, weight=1)
         panes.add(f2, weight=1)
 
-        bar2 = ttk.Frame(t)
-        bar2.pack(fill="x", pady=4)
-        ttk.Button(bar2, text="📤 結果複製到剪貼簿", style=B["success"], command=self.copy_result_text).pack(side="left")
-        ttk.Button(bar2, text="⬆ 結果移到輸入框", style=B["default"], command=self.result_to_input).pack(side="left", padx=4)
-        ttk.Button(bar2, text="🧹 清空", style=B["warn"], command=self.clear_text).pack(side="left")
-
         # ===== 檔案分頁 =====
         f = ttk.Frame(nb)
-        nb.add(f, text="📄 檔案")
+        nb.add(f, text="檔案")
 
         bar = ttk.Frame(f)
         bar.pack(fill="x", pady=4)
-        ttk.Button(bar, text="➕ 新增檔案…", style=B["primary"], command=self.add_files).pack(side="left")
-        ttk.Button(bar, text="📋 從剪貼簿讀取檔案", style=B["teal"], command=self.read_clipboard_files).pack(side="left", padx=4)
-        ttk.Button(bar, text="➖ 移除選取", style=B["warn"], command=self.remove_selected).pack(side="left")
-        ttk.Button(bar, text="🗑 清空清單", style=B["danger"], command=self.clear_files).pack(side="left", padx=4)
-        self.btn_run_files = ttk.Button(bar, text="🚀 開始處理", style=B["success"], command=self.run_files)
+        ttk.Button(bar, text="新增檔案…", style=B["primary"], command=self.add_files).pack(side="left")
+        ttk.Button(bar, text="從剪貼簿讀取檔案", style=B["teal"], command=self.read_clipboard_files).pack(side="left", padx=4)
+        ttk.Button(bar, text="移除選取", style=B["warn"], command=self.remove_selected).pack(side="left")
+        ttk.Button(bar, text="清空清單", style=B["danger"], command=self.clear_files).pack(side="left", padx=4)
+        self.btn_run_files = ttk.Button(bar, text="開始處理", style=B["success"], command=self.run_files)
         self.btn_run_files.pack(side="right")
 
-        lf = ttk.LabelFrame(f, text="📥 待處理檔案")
-        lf.pack(fill="both", expand=True, pady=(0, 4))
-        self.lst_files = tk.Listbox(lf, selectmode="extended", height=8)
-        self.lst_files.pack(fill="both", expand=True, padx=4, pady=4)
-        style_listbox(self.lst_files)
-
-        lo = ttk.LabelFrame(f, text="📤 已產生的去識別化檔案")
-        lo.pack(fill="both", expand=True)
-        self.lst_out = tk.Listbox(lo, selectmode="extended", height=8)
-        self.lst_out.pack(fill="both", expand=True, padx=4, pady=4)
-        style_listbox(self.lst_out)
-
         bar2 = ttk.Frame(f)
-        bar2.pack(fill="x", pady=4)
-        ttk.Button(bar2, text="📋 輸出檔案複製到剪貼簿", style=B["success"], command=self.copy_outputs).pack(side="left")
-        ttk.Button(bar2, text="📂 開啟所在資料夾", style=B["default"], command=self.open_output_folder).pack(side="left", padx=4)
+        bar2.pack(side="bottom", fill="x", pady=4)
+        ttk.Button(bar2, text="輸出檔案複製到剪貼簿", style=B["success"], command=self.copy_outputs).pack(side="left")
+        ttk.Button(bar2, text="開啟所在資料夾", style=B["default"], command=self.open_output_folder).pack(side="left", padx=4)
+
+        fpane = ttk.PanedWindow(f, orient="vertical")
+        fpane.pack(fill="both", expand=True)
+        lf = ttk.LabelFrame(fpane, text="待處理檔案")
+        lo = ttk.LabelFrame(fpane, text="已產生的去識別化檔案")
+        self.lst_files = self._make_listbox(lf)
+        self.lst_out = self._make_listbox(lo)
+        fpane.add(lf, weight=1)
+        fpane.add(lo, weight=1)
 
         # ===== 資料夾掃描分頁 (獨立檔案 scan_tab.py) =====
         s = ttk.Frame(nb)
-        nb.add(s, text="🔍 資料夾掃描")
+        nb.add(s, text="資料夾掃描")
         self.scan_tab = ScanTab(self, s)
 
         # ===== 名單管理分頁 =====
         lists = ttk.Frame(nb)
-        nb.add(lists, text="📋 名單管理")
+        nb.add(lists, text="名單管理")
         self._build_lists_tab(lists)
 
         # ===== 快速鍵分頁 =====
         h = ttk.Frame(nb)
-        nb.add(h, text="⌨ 快速鍵")
+        nb.add(h, text="快速鍵")
         self._build_hotkey_tab(h)
 
         # ===== 對照表分頁 =====
         m = ttk.Frame(nb)
-        nb.add(m, text="🔗 對照表")
+        nb.add(m, text="對照表")
         bar = ttk.Frame(m)
         bar.pack(fill="x", pady=4)
-        ttk.Button(bar, text="🔄 重新整理", style=B["default"], command=self.refresh_map_view).pack(side="left")
-        ttk.Button(bar, text="🗑 清除對照表", style=B["danger"], command=self.clear_map).pack(side="left", padx=4)
+        ttk.Button(bar, text="重新整理", style=B["default"], command=self.refresh_map_view).pack(side="left")
+        ttk.Button(bar, text="清除對照表", style=B["danger"], command=self.clear_map).pack(side="left", padx=4)
         self.tree = make_tree(m, [("tag", "標籤", 200, "w"), ("val", "原始值 (明碼)", 600, "w")])
         self.refresh_map_view()
 
         nb.bind("<<NotebookTabChanged>>", lambda _e: self.refresh_lists())
 
-        # ===== 記錄區 (深色) =====
-        lg = ttk.LabelFrame(self, text="📜 記錄")
-        lg.pack(fill="both", expand=False, padx=pad, pady=(0, pad))
-        self.log = scrolledtext.ScrolledText(lg, height=L["log_height"], wrap="none", state="disabled")
+        # ===== 記錄區 (深色，自動換行，隨視窗縮放) =====
+        self.log = scrolledtext.ScrolledText(lg, height=L["log_height"], wrap="word", state="disabled")
         self.log.pack(fill="both", expand=True, padx=4, pady=4)
         style_text(self.log, mono=True)
         self.log.configure(bg=T["log_bg"], fg=T["log_fg"], insertbackground="white",
@@ -340,96 +327,118 @@ class App(tk.Tk):
         self.log.tag_configure("warn", foreground="#fcd34d")
         self.log.tag_configure("info", foreground="#93c5fd")
 
-        self.status = tk.StringVar(value="就緒")
-        ttk.Label(self, textvariable=self.status, style="Status.TLabel", anchor="w").pack(fill="x")
-
         self._busy_widgets = [self.btn_read, self.btn_run,
                               self.btn_run_files, self.scan_tab.btn_scan, self.btn_add]
         self.refresh_lists()
+
+    def _make_listbox(self, parent):
+        """帶垂直 + 水平捲軸、可縮放的 Listbox"""
+        frame = ttk.Frame(parent)
+        frame.pack(fill="both", expand=True, padx=4, pady=4)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        lb = tk.Listbox(frame, selectmode="extended", height=6)
+        vs = ttk.Scrollbar(frame, orient="vertical", command=lb.yview)
+        hs = ttk.Scrollbar(frame, orient="horizontal", command=lb.xview)
+        lb.configure(yscrollcommand=vs.set, xscrollcommand=hs.set)
+        lb.grid(row=0, column=0, sticky="nsew")
+        vs.grid(row=0, column=1, sticky="ns")
+        hs.grid(row=1, column=0, sticky="we")
+        style_listbox(lb)
+        return lb
 
     # ================= 名單管理 =================
     def _build_lists_tab(self, parent):
         nb2 = ttk.Notebook(parent)
         nb2.pack(fill="both", expand=True)
-        hint = dict(justify="left", wraplength=L["wrap"], style="Hint.TLabel")
 
         # ---------- 敏感清單 ----------
         f = ttk.Frame(nb2)
-        nb2.add(f, text="🚨 敏感清單")
+        nb2.add(f, text="敏感清單")
         self.item_filter = tk.StringVar()
         self.items_info = tk.StringVar()
         bar = ttk.Frame(f)
         bar.pack(fill="x", pady=4)
-        ttk.Label(bar, text="🔎 篩選：").pack(side="left")
+        ttk.Label(bar, text="篩選：").pack(side="left")
         ttk.Entry(bar, textvariable=self.item_filter, width=22).pack(side="left", padx=4)
-        ttk.Button(bar, text="🗑 刪除選取", style=B["danger"], command=self.block_selected).pack(side="left", padx=(12, 2))
-        ttk.Button(bar, text="✔ 標為安全", style=B["success"], command=self.safe_selected).pack(side="left", padx=2)
-        ttk.Button(bar, text="🔄 重新整理", style=B["default"], command=self.refresh_lists).pack(side="left", padx=2)
+        ttk.Button(bar, text="刪除選取", style=B["danger"], command=self.block_selected).pack(side="left", padx=(12, 2))
+        ttk.Button(bar, text="標為安全", style=B["success"], command=self.safe_selected).pack(side="left", padx=2)
+        ttk.Button(bar, text="重新整理", style=B["default"], command=self.refresh_lists).pack(side="left", padx=2)
         ttk.Label(bar, textvariable=self.items_info, style="Info.TLabel").pack(side="left", padx=10)
         self.item_filter.trace_add("write", lambda *_: self.refresh_lists())
-        self.items_tree = make_tree(f, [("x", "刪除", 54, "center"), ("value", "敏感值 (明碼)", 280, "w"),
-                                        ("label", "類型", 130, "w"), ("count", "次數", 50, "center"),
-                                        ("how", "類型判斷", 150, "w"), ("last", "最近出現", 140, "w"),
+        # 說明文字先 pack 在底部，表格吃剩下的空間
+        hint_label(f, (
+            "• 點一下最左邊的「刪除」(或選取後按 Delete / 「刪除選取」) 就會立刻刪除，不會再問。\n"
+            "• 刪掉的值會進「黑名單」，之後永遠不會再被自動加進這份清單；想反悔到「黑名單」分頁移出即可。\n"
+            "• 「標為安全」會把值放進「安全清單」：之後偵測到也不遮蔽。\n"
+            f"• 清單存在 {entity_store.SENSITIVE_FILE}，結束程式時不會被刪除；內容是明碼，請注意檔案權限。"),
+            side="bottom", padx=4, pady=4)
+        self.items_tree = make_tree(f, [("x", "刪除", 70, "center"), ("value", "敏感值 (明碼)", 280, "w"),
+                                        ("label", "類型", 130, "w"), ("count", "次數", 70, "center"),
+                                        ("how", "類型判斷", 150, "w"), ("last", "最近出現", 150, "w"),
                                         ("sources", "來源", 220, "w")])
         self.items_tree.bind("<ButtonRelease-1>", lambda e: self._click_x(e, self.items_tree, self._items_rows,
                                                                           lambda vals: self._do_block(vals)))
         self.items_tree.bind("<Delete>", lambda _e: self.block_selected())
-        ttk.Label(f, text=(
-            "• 點一下最左邊的「✕」(或選取後按 Delete / 「刪除選取」) 就會立刻刪除，不會再問。\n"
-            "• 刪掉的值會進「黑名單」，之後永遠不會再被自動加進這份清單；想反悔到「黑名單」分頁移出即可。\n"
-            "• 「標為安全」會把值放進「安全清單」：之後偵測到也不遮蔽。\n"
-            f"• 清單存在 {entity_store.SENSITIVE_FILE}，結束程式時不會被刪除；內容是明碼，請注意檔案權限。"),
-            **hint).pack(fill="x", padx=4, pady=4)
 
         # ---------- 新增敏感資料 ----------
         a = ttk.Frame(nb2)
-        nb2.add(a, text="➕ 新增敏感資料")
-        ttk.Label(a, text="輸入要加入敏感清單的資料 (一行一筆；可只填值，也可寫成「類型<Tab>值」)："
+        nb2.add(a, text="新增敏感資料")
+        apane = ttk.PanedWindow(a, orient="vertical")
+        apane.pack(fill="both", expand=True)
+        a_top = ttk.Frame(apane)
+        a_bot = ttk.Frame(apane)
+        apane.add(a_top, weight=1)
+        apane.add(a_bot, weight=2)
+
+        ttk.Label(a_top, text="輸入要加入敏感清單的資料 (一行一筆；可只填值，也可寫成「類型<Tab>值」)："
                   ).pack(anchor="w", pady=(6, 2))
-        self.txt_add = scrolledtext.ScrolledText(a, height=7, wrap="word", undo=True)
-        self.txt_add.pack(fill="x", padx=2)
+        bar = ttk.Frame(a_top)
+        bar.pack(side="bottom", fill="x", pady=6)
+        self.txt_add = scrolledtext.ScrolledText(a_top, height=5, wrap="word", undo=True)
         style_text(self.txt_add)
-        bar = ttk.Frame(a)
-        bar.pack(fill="x", pady=6)
-        ttk.Label(bar, text="🏷 類型：").pack(side="left")
-        self.add_label = tk.StringVar(value=AUTO_LABEL)
-        ttk.Combobox(bar, textvariable=self.add_label, values=LABEL_CHOICES, width=26).pack(side="left", padx=4)
-        self.btn_add = ttk.Button(bar, text="➕ 新增到敏感清單", style=B["primary"], command=self.run_add_entities)
-        self.btn_add.pack(side="left", padx=(12, 2))
-        ttk.Button(bar, text="✔ 新增到安全清單", style=B["success"], command=self.add_to_safe_from_box).pack(side="left", padx=2)
-        ttk.Button(bar, text="📥 匯入文字檔…", style=B["purple"], command=self.import_entity_file).pack(side="left", padx=2)
-        ttk.Button(bar, text="🧹 清空", style=B["warn"],
-                   command=lambda: self.txt_add.delete("1.0", "end")).pack(side="left", padx=2)
-        ttk.Label(a, text=(
+        # 說明文字與按鈕列先排好，文字框吃剩下的空間
+        hint_label(a_top, (
             "• 類型不用填：選「自動判斷」(預設) 時，系統會用規則與模型 (Presidio、中文 NER) 判斷這個值是人名、機構、地址、電話…；"
             "實在判斷不出來才標成 SENSITIVE。想自己指定就從下拉選單挑，或直接輸入。\n"
-            "• 如果值原本在黑名單或安全清單裡，明確手動新增會自動把它移出。"),
-            **hint).pack(fill="x", pady=(0, 4))
-        self.add_tree = make_tree(a, [("value", "值", 300, "w"), ("label", "判斷出的類型", 150, "w"),
-                                      ("how", "判斷方式", 200, "w"), ("status", "結果", 70, "center"),
-                                      ("note", "備註", 300, "w")], height=8)
+            "• 如果值原本在黑名單或安全清單裡，明確手動新增會自動把它移出。"), side="bottom", pady=(0, 4))
+        self.txt_add.pack(fill="both", expand=True, padx=2)
+
+        ttk.Label(bar, text="類型：").pack(side="left")
+        self.add_label = tk.StringVar(value=AUTO_LABEL)
+        ttk.Combobox(bar, textvariable=self.add_label, values=LABEL_CHOICES, width=26).pack(side="left", padx=4)
+        self.btn_add = ttk.Button(bar, text="新增到敏感清單", style=B["primary"], command=self.run_add_entities)
+        self.btn_add.pack(side="left", padx=(12, 2))
+        ttk.Button(bar, text="新增到安全清單", style=B["success"], command=self.add_to_safe_from_box).pack(side="left", padx=2)
+        ttk.Button(bar, text="匯入文字檔…", style=B["purple"], command=self.import_entity_file).pack(side="left", padx=2)
+        ttk.Button(bar, text="清空", style=B["warn"],
+                   command=lambda: self.txt_add.delete("1.0", "end")).pack(side="left", padx=2)
+
+        self.add_tree = make_tree(a_bot, [("value", "值", 300, "w"), ("label", "判斷出的類型", 150, "w"),
+                                          ("how", "判斷方式", 200, "w"), ("status", "結果", 80, "center"),
+                                          ("note", "備註", 300, "w")], height=6)
 
         # ---------- 黑名單 ----------
         b = ttk.Frame(nb2)
-        nb2.add(b, text="⛔ 黑名單")
+        nb2.add(b, text="黑名單")
         bar = ttk.Frame(b)
         bar.pack(fill="x", pady=4)
-        ttk.Button(bar, text="↩ 移出黑名單 (選取)", style=B["teal"], command=self.unblock_selected).pack(side="left")
+        ttk.Button(bar, text="移出黑名單 (選取)", style=B["teal"], command=self.unblock_selected).pack(side="left")
         self.blocked_info = tk.StringVar()
         ttk.Label(bar, textvariable=self.blocked_info, style="Info.TLabel").pack(side="left", padx=10)
-        self.blocked_tree = make_tree(b, [("x", "移出", 54, "center"), ("value", "值 (明碼)", 320, "w"),
-                                          ("label", "原類型", 140, "w"), ("count", "原次數", 60, "center"),
-                                          ("at", "加入黑名單時間", 160, "w")])
+        hint_label(b, (
+            "黑名單：從敏感清單刪除的值。這些值永遠不會再被「自動」加進敏感清單 "
+            "(模型仍可能在文字裡偵測到並遮蔽它，只是不會再被記錄)。點最左邊的「移出」可立刻移出。檔案永久保留："
+            f"{entity_store.BLOCKED_FILE}"), side="bottom", padx=4, pady=4)
+        self.blocked_tree = make_tree(b, [("x", "移出", 70, "center"), ("value", "值 (明碼)", 320, "w"),
+                                          ("label", "原類型", 140, "w"), ("count", "原次數", 80, "center"),
+                                          ("at", "加入黑名單時間", 170, "w")])
         self.blocked_tree.bind("<ButtonRelease-1>", lambda e: self._click_x(
             e, self.blocked_tree, self._blocked_rows, lambda vals: self._do_unblock(vals)))
-        ttk.Label(b, text=(
-            "黑名單：從敏感清單刪除的值。這些值永遠不會再被「自動」加進敏感清單 "
-            "(模型仍可能在文字裡偵測到並遮蔽它，只是不會再被記錄)。檔案永久保留："
-            f"{entity_store.BLOCKED_FILE}"), **hint).pack(fill="x", padx=4, pady=4)
 
         # ---------- 安全清單 ----------
         sf = ttk.Frame(nb2)
-        nb2.add(sf, text="✅ 安全清單")
+        nb2.add(sf, text="安全清單")
         bar = ttk.Frame(sf)
         bar.pack(fill="x", pady=4)
         self.safe_input = tk.StringVar()
@@ -437,19 +446,19 @@ class App(tk.Tk):
         ent = ttk.Entry(bar, textvariable=self.safe_input, width=34)
         ent.pack(side="left", padx=4)
         ent.bind("<Return>", lambda _e: self.add_safe_entry())
-        ttk.Button(bar, text="➕ 加入", style=B["success"], command=self.add_safe_entry).pack(side="left")
-        ttk.Button(bar, text="↩ 移出安全清單 (選取)", style=B["warn"], command=self.unsafe_selected).pack(side="left", padx=(12, 2))
+        ttk.Button(bar, text="加入", style=B["success"], command=self.add_safe_entry).pack(side="left")
+        ttk.Button(bar, text="移出安全清單 (選取)", style=B["warn"], command=self.unsafe_selected).pack(side="left", padx=(12, 2))
         self.safe_info = tk.StringVar()
         ttk.Label(bar, textvariable=self.safe_info, style="Info.TLabel").pack(side="left", padx=10)
-        self.safe_tree = make_tree(sf, [("x", "移出", 54, "center"), ("value", "值 (明碼)", 340, "w"),
-                                        ("note", "備註", 240, "w"), ("at", "加入時間", 160, "w")])
+        hint_label(sf, (
+            "安全清單：確認「不是敏感資料」的值 (例如公司公開的名稱、範例帳號)。偵測結果剛好等於清單裡的值時會直接略過、不遮蔽，"
+            f"也不會被記進敏感清單。檔案永久保留：{entity_store.SAFE_FILE}"), side="bottom", padx=4, pady=4)
+        self.safe_tree = make_tree(sf, [("x", "移出", 70, "center"), ("value", "值 (明碼)", 340, "w"),
+                                        ("note", "備註", 240, "w"), ("at", "加入時間", 170, "w")])
         self.safe_tree.bind("<ButtonRelease-1>", lambda e: self._click_x(
             e, self.safe_tree, self._safe_rows, lambda vals: self._do_unsafe(vals)))
-        ttk.Label(sf, text=(
-            "安全清單：確認「不是敏感資料」的值 (例如公司公開的名稱、範例帳號)。偵測結果剛好等於清單裡的值時會直接略過、不遮蔽，"
-            f"也不會被記進敏感清單。檔案永久保留：{entity_store.SAFE_FILE}"), **hint).pack(fill="x", padx=4, pady=4)
 
-    # ---------- 通用：點 ✕ 欄位立刻執行 ----------
+    # ---------- 通用：點最左欄 (刪除 / 移出) 立刻執行 ----------
     def _click_x(self, event, tree, rows, action):
         if tree.identify_region(event.x, event.y) != "cell" or tree.identify_column(event.x) != "#1":
             return
@@ -562,7 +571,7 @@ class App(tk.Tk):
         self.items_tree.delete(*self.items_tree.get_children())
         for i, r in enumerate(self._items_rows):
             self.items_tree.insert("", "end", iid=str(i), tags=zebra(i), values=(
-                "✕", r["value"], r.get("label", ""), r.get("count", 1), r.get("label_source", ""),
+                "刪除", r["value"], r.get("label", ""), r.get("count", 1), r.get("label_source", ""),
                 r.get("last_seen", ""), ", ".join(r.get("sources", []))))
         total = entity_store.items_count()
         self.items_info.set(f"共 {total} 筆" + (f" (顯示 {len(self._items_rows)})" if flt else "") +
@@ -572,14 +581,14 @@ class App(tk.Tk):
         self.blocked_tree.delete(*self.blocked_tree.get_children())
         for i, r in enumerate(self._blocked_rows):
             self.blocked_tree.insert("", "end", iid=str(i), tags=zebra(i), values=(
-                "↩", r["value"], r.get("label", ""), r.get("count", ""), r.get("blocked_at", "")))
+                "移出", r["value"], r.get("label", ""), r.get("count", ""), r.get("blocked_at", "")))
         self.blocked_info.set(f"共 {len(self._blocked_rows)} 筆")
 
         self._safe_rows = entity_store.load_safe()
         self.safe_tree.delete(*self.safe_tree.get_children())
         for i, r in enumerate(self._safe_rows):
             self.safe_tree.insert("", "end", iid=str(i), tags=zebra(i), values=(
-                "↩", r["value"], r.get("note", ""), r.get("added_at", "")))
+                "移出", r["value"], r.get("note", ""), r.get("added_at", "")))
         self.safe_info.set(f"共 {len(self._safe_rows)} 筆")
 
     # ================= 快速鍵 =================
@@ -591,27 +600,29 @@ class App(tk.Tk):
         self.hk_mode = tk.StringVar(value="")
         self.svc_state = tk.StringVar(value="全域快速鍵：未啟動")
 
-        box = ttk.LabelFrame(parent, text="⌨ 快速鍵設定 (按「錄製」後直接按下想用的組合鍵)")
+        box = ttk.LabelFrame(parent, text="快速鍵設定 (按「錄製」後直接按下想用的組合鍵)")
         box.pack(fill="x", padx=4, pady=8)
         box.columnconfigure(1, weight=1)
 
         ttk.Label(box, text="複製 / 遮蔽：").grid(row=0, column=0, sticky="w", padx=6, pady=6)
         self.ent_copy = ttk.Entry(box, textvariable=self.hk_copy, state="readonly", width=32)
         self.ent_copy.grid(row=0, column=1, sticky="we", padx=4)
-        ttk.Button(box, text="⏺ 錄製", style=B["danger"],
+        ttk.Button(box, text="錄製", style=B["danger"],
                    command=lambda: self._record(self.hk_copy, self.ent_copy)).grid(row=0, column=2, padx=4)
 
         ttk.Label(box, text="貼上：").grid(row=1, column=0, sticky="w", padx=6, pady=6)
         self.ent_paste = ttk.Entry(box, textvariable=self.hk_paste, state="readonly", width=32)
         self.ent_paste.grid(row=1, column=1, sticky="we", padx=4)
-        ttk.Button(box, text="⏺ 錄製", style=B["danger"],
+        ttk.Button(box, text="錄製", style=B["danger"],
                    command=lambda: self._record(self.hk_paste, self.ent_paste)).grid(row=1, column=2, padx=4)
-        ttk.Button(box, text="✖ 清除 (改用模式 B)", style=B["warn"], command=self._clear_paste).grid(row=1, column=3, padx=4)
+        ttk.Button(box, text="清除 (改用模式 B)", style=B["warn"], command=self._clear_paste).grid(row=1, column=3, padx=4)
 
-        ttk.Label(box, textvariable=self.hk_hint, style="Warn.TLabel").grid(
-            row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 4))
-        ttk.Label(box, textvariable=self.hk_mode, style="Info.TLabel", wraplength=960, justify="left").grid(
-            row=3, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 6))
+        lb1 = ttk.Label(box, textvariable=self.hk_hint, style="Warn.TLabel", justify="left")
+        lb1.grid(row=2, column=0, columnspan=4, sticky="we", padx=6, pady=(0, 4))
+        auto_wrap(lb1)
+        lb2 = ttk.Label(box, textvariable=self.hk_mode, style="Info.TLabel", justify="left")
+        lb2.grid(row=3, column=0, columnspan=4, sticky="we", padx=6, pady=(0, 6))
+        auto_wrap(lb2)
 
         for ent in (self.ent_copy, self.ent_paste):
             ent.bind("<KeyPress>", self._on_hotkey_key)
@@ -621,9 +632,9 @@ class App(tk.Tk):
 
         bar = ttk.Frame(parent)
         bar.pack(fill="x", padx=4, pady=4)
-        ttk.Button(bar, text="💾 套用並儲存", style=B["primary"], command=self.apply_hotkeys).pack(side="left")
-        ttk.Button(bar, text="↺ 還原預設", style=B["default"], command=self.reset_hotkeys).pack(side="left", padx=4)
-        self.btn_svc = ttk.Button(bar, text="▶ 啟動全域快速鍵", style=B["success"], command=self.toggle_service)
+        ttk.Button(bar, text="套用並儲存", style=B["primary"], command=self.apply_hotkeys).pack(side="left")
+        ttk.Button(bar, text="還原預設", style=B["default"], command=self.reset_hotkeys).pack(side="left", padx=4)
+        self.btn_svc = ttk.Button(bar, text="啟動全域快速鍵", style=B["success"], command=self.toggle_service)
         self.btn_svc.pack(side="left", padx=(16, 4))
         ttk.Label(bar, textvariable=self.svc_state, style="Info.TLabel").pack(side="left", padx=8)
 
@@ -635,7 +646,7 @@ class App(tk.Tk):
                "處理完成前就貼上會貼出原始內容。\n"
                "• 設定存在 hotkeys.json，命令列的 main.py 啟動時也會讀取同一份設定。\n"
                "• 全域快速鍵由本視窗提供；關閉視窗後即停止。")
-        ttk.Label(parent, text=tip, wraplength=L["wrap"], justify="left", style="Hint.TLabel").pack(fill="x", padx=8, pady=8)
+        hint_label(parent, tip, padx=8, pady=8)
 
     def _update_mode_label(self):
         if self.hk_paste.get().strip():
@@ -722,18 +733,18 @@ class App(tk.Tk):
     def _refresh_service_state(self):
         if self.service.running:
             mode = "B" if self.service.direct_mode else "A"
-            self.svc_state.set(f"🟢 全域快速鍵：執行中 (模式 {mode})")
-            self.btn_svc.configure(text="⏹ 停止全域快速鍵", style=B["danger"])
+            self.svc_state.set(f"全域快速鍵：執行中 (模式 {mode})")
+            self.btn_svc.configure(text="停止全域快速鍵", style=B["danger"])
         else:
-            self.svc_state.set("⚪ 全域快速鍵：未啟動")
-            self.btn_svc.configure(text="▶ 啟動全域快速鍵", style=B["success"])
+            self.svc_state.set("全域快速鍵：未啟動")
+            self.btn_svc.configure(text="啟動全域快速鍵", style=B["success"])
 
     # ================= 背景執行 =================
     def _set_busy(self, busy, msg=""):
         self.busy = busy
         for w in self._busy_widgets:
             w.state(["disabled"] if busy else ["!disabled"])
-        self.status.set(("⏳ " + msg) if busy else "✅ 就緒")
+        self.status.set(msg if busy else "就緒")
 
     def _start(self, func, msg, on_done):
         """在背景執行 func，完成後在主執行緒呼叫 on_done(result)。
@@ -779,7 +790,7 @@ class App(tk.Tk):
                     self.log.configure(state="disabled")
                 elif item[0] == "status":
                     if self.busy:
-                        self.status.set("⏳ " + item[1])
+                        self.status.set(item[1])
                 elif item[0] == "done":
                     _, result, err = item
                     self._set_busy(False)
@@ -865,7 +876,7 @@ class App(tk.Tk):
                           if preprocess.ENABLED else "已關閉：偵測直接使用原文"))
 
     def preview_preprocess(self):
-        """在結果框顯示「送模型的文字」與每個步驟改了什麼 (不會遮蔽、也不會動對照表 / 名單)"""
+        """另開視窗顯示「送模型的文字」與每個步驟改了什麼 (不會遮蔽、也不會動對照表 / 名單)"""
         text = self.txt_in.get("1.0", "end-1c")
         if not text.strip():
             messagebox.showinfo("提示", "輸入框是空的")
@@ -998,4 +1009,5 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    enable_dpi_awareness()      # 必須在建立視窗之前
     App().mainloop()

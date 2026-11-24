@@ -13,7 +13,7 @@ DETECTION_RESULT = [('王志明', 'PERSON'), ('Chih-Ming Wang', 'PERSON'), ('D28
 # ---------------------------------------------------------------------------
 # 變數二：正確答案 (ground truth) 資料檔路徑 —— 內含 article 與 answer
 # ---------------------------------------------------------------------------
-GROUND_TRUTH_FILE = "../presidio/t1.json"
+GROUND_TRUTH_FILE = "t1.json" #  python -u "d:\2.programm2\topic\presidio-application\report\pii_highlight_eval.py" --data "d:\2.programm2\topic\presidio-application\presidio\t1.json"
 
 OUTPUT_IMAGE = "pii_highlight_result.png"
 
@@ -39,12 +39,12 @@ CUSTOM_FONT_PATH = None  # 例如 Windows: r"C:\Windows\Fonts\msjh.ttc"
 
 FONT_CANDIDATES = [
     # Windows 內建中文字型
-    r"C:\Windows\Fonts\msjh.ttc",      # 微軟正黑體 (繁中，建議優先)
-    r"C:\Windows\Fonts\msjhbd.ttc",
-    r"C:\Windows\Fonts\mingliu.ttc",   # 細明體
-    r"C:\Windows\Fonts\simsun.ttc",    # 新細明體/宋體 (簡中)
-    r"C:\Windows\Fonts\msyh.ttc",      # 微軟雅黑 (簡中)
-    r"C:\Windows\Fonts\simhei.ttf",
+    r"C:\Windows\Fonts\msjhbd.ttc",      # 微軟正黑體 (繁中，建議優先)
+    # r"C:\Windows\Fonts\msjhbd.ttc",
+    # r"C:\Windows\Fonts\mingliu.ttc",   # 細明體
+    # r"C:\Windows\Fonts\simsun.ttc",    # 新細明體/宋體 (簡中)
+    # r"C:\Windows\Fonts\msyh.ttc",      # 微軟雅黑 (簡中)
+    # r"C:\Windows\Fonts\simhei.ttf",
     # macOS 內建中文字型
     "/System/Library/Fonts/PingFang.ttc",
     "/System/Library/Fonts/STHeiti Light.ttc",
