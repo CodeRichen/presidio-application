@@ -25,3 +25,5 @@ test/offline_model
 *.ps1
 hotkeys.json
 export/
+test*
+models/

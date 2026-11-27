@@ -8,8 +8,9 @@ ui.py - 剪貼簿敏感資訊防護 圖形介面 (tkinter，不需額外安裝)
               判斷完輸入框會清空，結果接在結果框原有內容後面 (結果不會被清掉，要清再按「清空」)。
               送模型前統一先做前處理 (全形轉半形、隱形字元、網頁標籤、簡繁、空白)，
               可開關，也能「預覽前處理」看每一步改了什麼；遮蔽只動被偵測到的那一段，原文其餘部分不變
-  - 檔案      選擇多個檔案 -> 去識別化
+  - 檔案      選擇多個檔案 -> 去識別化 (圖片 / PDF 可勾選「遮蔽人臉」，使用本機 YuNet 模型，離線偵測)
   - 資料夾掃描 (scan_tab.py) 選一個資料夾 -> 列出所有檔案，掃描後標示安全 / 不安全；可選是否產生遮蔽後的檔案
+              (人臉遮蔽開關與「檔案」分頁共用)
   - 名單管理  敏感清單 (點「刪除」一下就刪除，不用確認，刪掉的值進黑名單永遠不會再被自動加入)
               / 新增敏感資料 (類型可不填，由模型判斷) / 黑名單 / 安全清單 (永遠不遮蔽)
   - 快速鍵    錄製並更改快速鍵、啟動/停止全域快速鍵
@@ -23,6 +24,8 @@ import sys
 import queue
 import threading
 import subprocess
+import importlib
+import importlib.util
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
@@ -52,6 +55,9 @@ _SPECIAL_KEYS = {"space": "<space>", "Return": "<enter>", "Tab": "<tab>", "BackS
 
 KIND_CODE = "程式"          # 文字分頁的內容類型 (二選一)
 KIND_TEXT = "一般文字"
+
+MEDIA_MODULE = "handler_media"   # 圖片/PDF 去識別化模組的檔名 (不含 .py)
+_FACE_OFF = {"0", "off", "false", "no"}
 
 AUTO_LABEL = "自動判斷 (由模型決定)"
 LABEL_CHOICES = [AUTO_LABEL, "PERSON", "ORGANIZATION", "ADDRESS", "LOCATION", "POSITION", "TW_PHONE",
@@ -174,6 +180,9 @@ class App(tk.Tk):
         print(font_report())
         print(f"[就緒] 對照表 {len(self.mapping)} 筆、敏感清單 {entity_store.items_count()} 筆、"
               f"安全清單 {len(entity_store.load_safe())} 筆、黑名單 {len(entity_store.load_blocked())} 筆")
+        if self.face_var.get():
+            ok, why = self._check_face_ready()
+            print("[人臉遮蔽] 已開啟" if ok else f"[警告] 人臉遮蔽已開啟但環境不完整：{why}")
         self._start(core.warmup, "載入模型中…", None)  # 背景預熱
 
     # ================= 介面 =================
@@ -185,7 +194,7 @@ class App(tk.Tk):
         head.pack(fill="x")
         tk.Label(head, text="剪貼簿敏感資訊防護", bg=T["header"], fg="white",
                  font=ui_font(6, True)).pack(side="left", padx=16, pady=10)
-        tk.Label(head, text="遮蔽 · 還原 · 檔案去識別化 · 資料夾掃描", bg=T["header"], fg=T["header_sub"],
+        tk.Label(head, text="遮蔽 · 還原 · 檔案去識別化 (含人臉) · 資料夾掃描", bg=T["header"], fg=T["header_sub"],
                  font=ui_font()).pack(side="left")
 
         # ---- 最下方狀態列 (先 pack，視窗再小也不會被擠掉) ----
@@ -275,6 +284,17 @@ class App(tk.Tk):
         self.btn_run_files = ttk.Button(bar, text="開始處理", style=B["success"], command=self.run_files)
         self.btn_run_files.pack(side="right")
 
+        # 人臉遮蔽開關：改 PII_FACE_ENABLED 環境變數，媒體模組每次處理都會重新讀取，
+        # 所以「檔案」與「資料夾掃描」兩個分頁共用這個設定
+        face_bar = ttk.Frame(f)
+        face_bar.pack(fill="x", pady=(0, 4))
+        self.face_var = tk.BooleanVar(
+            value=os.environ.get("PII_FACE_ENABLED", "1").strip().lower() not in _FACE_OFF)
+        ttk.Checkbutton(face_bar, text="遮蔽人臉 (圖片 / PDF，本機 YuNet 離線偵測)",
+                        variable=self.face_var, command=self._toggle_face).pack(side="left")
+        ttk.Label(face_bar, text="　此設定同樣套用到「資料夾掃描」分頁",
+                  style="Info.TLabel").pack(side="left")
+
         bar2 = ttk.Frame(f)
         bar2.pack(side="bottom", fill="x", pady=4)
         ttk.Button(bar2, text="輸出檔案複製到剪貼簿", style=B["success"], command=self.copy_outputs).pack(side="left")
@@ -311,7 +331,7 @@ class App(tk.Tk):
         bar.pack(fill="x", pady=4)
         ttk.Button(bar, text="重新整理", style=B["default"], command=self.refresh_map_view).pack(side="left")
         ttk.Button(bar, text="清除對照表", style=B["danger"], command=self.clear_map).pack(side="left", padx=4)
-        self.tree = make_tree(m, [("tag", "標籤", 200, "w"), ("val", "原始值 (明碼)", 600, "w")])
+        self.tree = make_tree(m, [("tag", "標籤", 200, "w"), ("val", "原始值 ", 600, "w")])
         self.refresh_map_view()
 
         nb.bind("<<NotebookTabChanged>>", lambda _e: self.refresh_lists())
@@ -373,7 +393,7 @@ class App(tk.Tk):
             "• 「標為安全」會把值放進「安全清單」：之後偵測到也不遮蔽。\n"
             f"• 清單存在 {entity_store.SENSITIVE_FILE}，結束程式時不會被刪除；內容是明碼，請注意檔案權限。"),
             side="bottom", padx=4, pady=4)
-        self.items_tree = make_tree(f, [("x", "刪除", 70, "center"), ("value", "敏感值 (明碼)", 280, "w"),
+        self.items_tree = make_tree(f, [("x", "刪除", 70, "center"), ("value", "敏感資料 ", 280, "w"),
                                         ("label", "類型", 130, "w"), ("count", "次數", 70, "center"),
                                         ("how", "類型判斷", 150, "w"), ("last", "最近出現", 150, "w"),
                                         ("sources", "來源", 220, "w")])
@@ -430,7 +450,7 @@ class App(tk.Tk):
             "黑名單：從敏感清單刪除的值。這些值永遠不會再被「自動」加進敏感清單 "
             "(模型仍可能在文字裡偵測到並遮蔽它，只是不會再被記錄)。點最左邊的「移出」可立刻移出。檔案永久保留："
             f"{entity_store.BLOCKED_FILE}"), side="bottom", padx=4, pady=4)
-        self.blocked_tree = make_tree(b, [("x", "移出", 70, "center"), ("value", "值 (明碼)", 320, "w"),
+        self.blocked_tree = make_tree(b, [("x", "移出", 70, "center"), ("value", "值 ", 320, "w"),
                                           ("label", "原類型", 140, "w"), ("count", "原次數", 80, "center"),
                                           ("at", "加入黑名單時間", 170, "w")])
         self.blocked_tree.bind("<ButtonRelease-1>", lambda e: self._click_x(
@@ -453,7 +473,7 @@ class App(tk.Tk):
         hint_label(sf, (
             "安全清單：確認「不是敏感資料」的值 (例如公司公開的名稱、範例帳號)。偵測結果剛好等於清單裡的值時會直接略過、不遮蔽，"
             f"也不會被記進敏感清單。檔案永久保留：{entity_store.SAFE_FILE}"), side="bottom", padx=4, pady=4)
-        self.safe_tree = make_tree(sf, [("x", "移出", 70, "center"), ("value", "值 (明碼)", 340, "w"),
+        self.safe_tree = make_tree(sf, [("x", "移出", 70, "center"), ("value", "值 ", 340, "w"),
                                         ("note", "備註", 240, "w"), ("at", "加入時間", 170, "w")])
         self.safe_tree.bind("<ButtonRelease-1>", lambda e: self._click_x(
             e, self.safe_tree, self._safe_rows, lambda vals: self._do_unsafe(vals)))
@@ -915,6 +935,43 @@ class App(tk.Tk):
         self.txt_out.delete("1.0", "end")
 
     # ================= 檔案 =================
+    def _face_model_path(self):
+        """回傳 YuNet 模型路徑；找不到媒體模組時回傳 None (略過檢查)。"""
+        path = os.environ.get("PII_FACE_MODEL")
+        if path:
+            return path
+        try:
+            mod = importlib.import_module(MEDIA_MODULE)
+            return os.path.join(os.path.dirname(os.path.abspath(mod.__file__)), mod.FACE_MODEL_NAME)
+        except Exception:
+            return None
+
+    def _check_face_ready(self):
+        """開啟人臉遮蔽時的前置檢查，回傳 (是否可用, 問題說明)。"""
+        if importlib.util.find_spec("cv2") is None:
+            return False, "尚未安裝 opencv-python (pip install opencv-python)"
+        path = self._face_model_path()
+        if path and not os.path.isfile(path):
+            return False, (f"找不到 YuNet 人臉模型：{path}\n"
+                           "請放置模型檔，或用環境變數 PII_FACE_MODEL 指定路徑。")
+        return True, ""
+
+    def _toggle_face(self):
+        on = self.face_var.get()
+        os.environ["PII_FACE_ENABLED"] = "1" if on else "0"   # media 模組每次處理都會重新讀取
+        if not on:
+            print("[人臉遮蔽] 已關閉：圖片 / PDF 只遮蔽文字類敏感資訊")
+            return
+        ok, why = self._check_face_ready()
+        if ok:
+            print("[人臉遮蔽] 已開啟：圖片 / PDF 會用 YuNet 偵測並遮蔽人臉")
+        else:
+            print(f"[警告] 人臉遮蔽已開啟但環境不完整：{why}")
+            messagebox.showwarning(
+                "人臉遮蔽無法使用",
+                why + "\n\n目前處理含圖片的檔案會直接失敗 (為了安全不會略過人臉)。"
+                      "請補齊後再處理，或取消勾選。")
+
     def _add_paths(self, paths):
         for p in paths:
             p = os.path.abspath(p)
