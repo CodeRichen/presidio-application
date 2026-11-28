@@ -366,7 +366,8 @@ def _ocr_raw_text(hm, path, ext, zoom=2.0):
     """用 handler_media 自己的 Windows OCR 取得原始辨識文字，僅供報告開頭肉眼比對，不影響評分。"""
     def ocr(img):
         words = hm.ocr_words(hm.preprocess_for_ocr(img)[0])
-        return "\n".join(" ".join(w["text"] for w in line) for line in hm._group_lines(words))
+        return "\n".join("".join((" " if i and w.get("sp", True) else "") + w["text"] for i, w in enumerate(line))
+                         for line in hm._group_lines(words))
     try:
         if ext not in PDF_EXTS:
             return ocr(hm.Image.open(path).convert("RGB")) or "(OCR 結果為空白)"
@@ -543,7 +544,7 @@ def main_test():
     ablation = "--ablation" in sys.argv[1:]
     if "--no-face" in sys.argv[1:]:
         os.environ["PII_FACE_ENABLED"] = "0"
-    raw = args[0] if args else "t1.pdf"
+    raw = args[0] if args else "t1.png"
     path = _resolve_path(raw)
     if path is None:
         sys.exit(f"[錯誤] 找不到檔案：{raw}")
